@@ -1,0 +1,16 @@
+[package]
+name = "zi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+notify = "8.0"
+trash = "5.2"
+toml = "0.8"
+anyhow = "1.0"
+tempfile = "3.17"
+chrono = "0.4"
