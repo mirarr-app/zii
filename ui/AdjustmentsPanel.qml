@@ -7,8 +7,9 @@ Rectangle {
     property bool active: false
     property int brightness: 0
     property real contrast: 0.0 // -100 to 100
+    property int saturation: 0  // -100 to 100
 
-    signal adjustmentsApplied(int brightness, real contrast)
+    signal adjustmentsApplied(int brightness, real contrast, int saturation)
     signal closed()
 
     visible: active
@@ -16,6 +17,7 @@ Rectangle {
         if (active) {
             root.brightness = 0;
             root.contrast = 0;
+            root.saturation = 0;
         }
     }
     opacity: active ? 1.0 : 0.0
@@ -24,7 +26,7 @@ Rectangle {
     Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
 
     width: 320
-    height: 190
+    height: 255
     radius: 12
     color: Qt.rgba(theme.darkerBackground.r, theme.darkerBackground.g, theme.darkerBackground.b, 0.92)
     border.color: theme.accent
@@ -201,6 +203,78 @@ Rectangle {
             }
         }
 
+        // Saturation Slider
+        Column {
+            width: parent.width
+            spacing: 4
+
+            Item {
+                width: parent.width
+                height: 16
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Saturation"
+                    color: theme.lightForeground
+                    font.family: theme.fontFamily
+                    font.pixelSize: 11
+                }
+                Text {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: (root.saturation > 0 ? "+" : "") + root.saturation
+                    color: theme.accent
+                    font.family: theme.fontFamily
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+            }
+
+            Rectangle {
+                id: satTrack
+                width: parent.width
+                height: 6
+                radius: 3
+                color: theme.selection
+
+                Rectangle {
+                    width: Math.max(0, (root.saturation + 100) / 200 * parent.width)
+                    height: parent.height
+                    radius: 3
+                    color: theme.accent
+                }
+
+                Rectangle {
+                    id: satThumb
+                    x: Math.max(0, Math.min(parent.width - 14, (root.saturation + 100) / 200 * parent.width - 7))
+                    y: -4
+                    width: 14
+                    height: 14
+                    radius: 7
+                    color: theme.brightForeground
+                    border.color: theme.accent
+                    border.width: 2
+                }
+
+                MouseArea {
+                    anchors.centerIn: parent
+                    width: parent.width
+                    height: 28
+                    cursorShape: Qt.PointingHandCursor
+                    onPositionChanged: mouse => {
+                        var frac = Math.max(0, Math.min(1, mouse.x / width));
+                        root.saturation = Math.round((frac * 200) - 100);
+                        applyDebounce.restart();
+                    }
+                    onClicked: mouse => {
+                        var frac = Math.max(0, Math.min(1, mouse.x / width));
+                        root.saturation = Math.round((frac * 200) - 100);
+                        applyDebounce.restart();
+                    }
+                }
+            }
+        }
+
         // Reset Button
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -226,6 +300,7 @@ Rectangle {
                     onClicked: {
                         root.brightness = 0;
                         root.contrast = 0;
+                        root.saturation = 0;
                         applyDebounce.restart();
                     }
                 }
@@ -238,7 +313,7 @@ Rectangle {
         interval: 120
         repeat: false
         onTriggered: {
-            root.adjustmentsApplied(root.brightness, root.contrast);
+            root.adjustmentsApplied(root.brightness, root.contrast, root.saturation);
         }
     }
 
@@ -249,6 +324,11 @@ Rectangle {
 
     function stepContrast(delta) {
         root.contrast = Math.max(-100, Math.min(100, root.contrast + delta));
+        applyDebounce.restart();
+    }
+
+    function stepSaturation(delta) {
+        root.saturation = Math.max(-100, Math.min(100, root.saturation + delta));
         applyDebounce.restart();
     }
 }

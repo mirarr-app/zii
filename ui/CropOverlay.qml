@@ -16,6 +16,7 @@ Item {
     property real cropY: 0
     property real cropW: 100
     property real cropH: 100
+    property string aspectRatio: "FREE" // "FREE", "1:1", "16:9", "4:3", "3:2", "9:16"
 
     signal cropApplied(real x, real y, real width, real height)
     signal cropCanceled()
@@ -23,11 +24,46 @@ Item {
     visible: active
     enabled: active
 
+    function getRatioValue(ratio) {
+        if (ratio === "1:1") return 1.0;
+        if (ratio === "16:9") return 16.0 / 9.0;
+        if (ratio === "4:3") return 4.0 / 3.0;
+        if (ratio === "3:2") return 3.0 / 2.0;
+        if (ratio === "9:16") return 9.0 / 16.0;
+        return 0.0;
+    }
+
+    function setAspectRatio(newRatio) {
+        aspectRatio = newRatio;
+        if (newRatio === "FREE") return;
+        var r = getRatioValue(newRatio);
+        if (r <= 0) return;
+
+        // Centers and fits the crop rectangle to the image with that ratio
+        var maxW = imgNaturalWidth * 0.9;
+        var maxH = imgNaturalHeight * 0.9;
+        var w = maxW;
+        var h = w / r;
+        if (h > maxH) {
+            h = maxH;
+            w = h * r;
+        }
+        cropW = Math.round(w);
+        cropH = Math.round(h);
+        cropX = Math.round((imgNaturalWidth - cropW) / 2);
+        cropY = Math.round((imgNaturalHeight - cropH) / 2);
+        clampCrop();
+    }
+
     function initCrop() {
-        cropX = Math.round(imgNaturalWidth * 0.1);
-        cropY = Math.round(imgNaturalHeight * 0.1);
-        cropW = Math.round(imgNaturalWidth * 0.8);
-        cropH = Math.round(imgNaturalHeight * 0.8);
+        if (aspectRatio === "FREE") {
+            cropX = Math.round(imgNaturalWidth * 0.1);
+            cropY = Math.round(imgNaturalHeight * 0.1);
+            cropW = Math.round(imgNaturalWidth * 0.8);
+            cropH = Math.round(imgNaturalHeight * 0.8);
+        } else {
+            setAspectRatio(aspectRatio);
+        }
     }
 
     onActiveChanged: {
@@ -42,12 +78,28 @@ Item {
     readonly property real screenW: cropW * zoomFactor
     readonly property real screenH: cropH * zoomFactor
 
-    // Clamp helper to ensure crop bounds stay within the image
+    // Clamp helper to ensure crop bounds stay within the image and enforce aspect ratio
     function clampCrop() {
-        cropW = Math.max(10, Math.min(imgNaturalWidth, cropW));
-        cropH = Math.max(10, Math.min(imgNaturalHeight, cropH));
-        cropX = Math.max(0, Math.min(imgNaturalWidth - cropW, cropX));
-        cropY = Math.max(0, Math.min(imgNaturalHeight - cropH, cropY));
+        if (aspectRatio === "FREE") {
+            cropW = Math.max(10, Math.min(imgNaturalWidth, cropW));
+            cropH = Math.max(10, Math.min(imgNaturalHeight, cropH));
+            cropX = Math.max(0, Math.min(imgNaturalWidth - cropW, cropX));
+            cropY = Math.max(0, Math.min(imgNaturalHeight - cropH, cropY));
+        } else {
+            var r = getRatioValue(aspectRatio);
+            if (r > 0) {
+                var maxW = imgNaturalWidth;
+                var maxH = maxW / r;
+                if (maxH > imgNaturalHeight) {
+                    maxH = imgNaturalHeight;
+                    maxW = maxH * r;
+                }
+                cropW = Math.max(20, Math.min(maxW, cropW));
+                cropH = cropW / r;
+                cropX = Math.max(0, Math.min(imgNaturalWidth - cropW, cropX));
+                cropY = Math.max(0, Math.min(imgNaturalHeight - cropH, cropY));
+            }
+        }
     }
 
     // Keyboard controls for crop - scaled by zoomFactor to ensure consistent screen motion
@@ -60,6 +112,28 @@ Item {
 
     function resizeBox(dirW, dirH) {
         var step = Math.max(5, Math.round(25 / Math.max(0.001, root.zoomFactor)));
+        if (aspectRatio !== "FREE") {
+            var r = getRatioValue(aspectRatio);
+            if (r > 0) {
+                var delta = 0;
+                if (dirW !== 0) delta = dirW * step;
+                else if (dirH !== 0) delta = dirH * step * r;
+                var newW = cropW + delta;
+                var newH = newW / r;
+                if (newW >= 20 && newH >= 20) {
+                    var diffW = newW - cropW;
+                    var diffH = newH - cropH;
+                    var newX = cropX - diffW / 2;
+                    var newY = cropY - diffH / 2;
+                    cropX = Math.max(0, Math.min(imgNaturalWidth - newW, newX));
+                    cropY = Math.max(0, Math.min(imgNaturalHeight - newH, newY));
+                    cropW = newW;
+                    cropH = newH;
+                }
+                clampCrop();
+                return;
+            }
+        }
         if (dirW > 0) cropW += step;
         else if (dirW < 0) cropW = Math.max(20, cropW - step);
         if (dirH > 0) cropH += step;
@@ -69,6 +143,27 @@ Item {
 
     function adjustEdge(edge, dir) {
         var step = Math.max(5, Math.round(25 / Math.max(0.001, root.zoomFactor)));
+        if (aspectRatio !== "FREE") {
+            var r = getRatioValue(aspectRatio);
+            if (r > 0) {
+                var delta = (edge === "left" ? -dir : -dir) * step;
+                var newW = cropW + delta;
+                var newH = newW / r;
+                if (newW >= 20 && newH >= 20) {
+                    if (edge === "left") {
+                        var dW = newW - cropW;
+                        cropX = Math.max(0, cropX - dW);
+                    } else if (edge === "top") {
+                        var dH = newH - cropH;
+                        cropY = Math.max(0, cropY - dH);
+                    }
+                    cropW = newW;
+                    cropH = newH;
+                }
+                clampCrop();
+                return;
+            }
+        }
         if (edge === "left") {
             if (dir < 0) {
                 var actualL = Math.min(cropX, step);
@@ -294,10 +389,22 @@ Item {
                 onPositionChanged: m => {
                     var dx = (m.x - startX) / root.zoomFactor;
                     var dy = (m.y - startY) / root.zoomFactor;
-                    root.cropX = sCropX + dx;
-                    root.cropY = sCropY + dy;
-                    root.cropW = sCropW - dx;
-                    root.cropH = sCropH - dy;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var fixedRight = sCropX + sCropW;
+                        var fixedBottom = sCropY + sCropH;
+                        var newW = Math.max(20, sCropW - dx);
+                        var newH = newW / r;
+                        root.cropX = fixedRight - newW;
+                        root.cropY = fixedBottom - newH;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropX = sCropX + dx;
+                        root.cropY = sCropY + dy;
+                        root.cropW = sCropW - dx;
+                        root.cropH = sCropH - dy;
+                    }
                     root.clampCrop();
                 }
             }
@@ -309,12 +416,24 @@ Item {
             anchors.verticalCenter: parent.top
             MouseArea {
                 anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.SizeVerCursor
-                property real startY: 0; property real sCropY: 0; property real sCropH: 0
-                onPressed: m => { startY = m.y; sCropY = root.cropY; sCropH = root.cropH; }
+                property real startY: 0; property real sCropX: 0; property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
+                onPressed: m => { startY = m.y; sCropX = root.cropX; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
                 onPositionChanged: m => {
                     var dy = (m.y - startY) / root.zoomFactor;
-                    root.cropY = sCropY + dy;
-                    root.cropH = sCropH - dy;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var fixedBottom = sCropY + sCropH;
+                        var newH = Math.max(20, sCropH - dy);
+                        var newW = newH * r;
+                        var diffW = newW - sCropW;
+                        root.cropX = sCropX - diffW / 2;
+                        root.cropY = fixedBottom - newH;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropY = sCropY + dy;
+                        root.cropH = sCropH - dy;
+                    }
                     root.clampCrop();
                 }
             }
@@ -327,14 +446,25 @@ Item {
             MouseArea {
                 anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.SizeBDiagCursor
                 property real startX: 0; property real startY: 0
-                property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
-                onPressed: m => { startX = m.x; startY = m.y; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
+                property real sCropX: 0; property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
+                onPressed: m => { startX = m.x; startY = m.y; sCropX = root.cropX; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
                 onPositionChanged: m => {
                     var dx = (m.x - startX) / root.zoomFactor;
                     var dy = (m.y - startY) / root.zoomFactor;
-                    root.cropY = sCropY + dy;
-                    root.cropW = sCropW + dx;
-                    root.cropH = sCropH - dy;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var fixedBottom = sCropY + sCropH;
+                        var newW = Math.max(20, sCropW + dx);
+                        var newH = newW / r;
+                        root.cropX = sCropX;
+                        root.cropY = fixedBottom - newH;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropY = sCropY + dy;
+                        root.cropW = sCropW + dx;
+                        root.cropH = sCropH - dy;
+                    }
                     root.clampCrop();
                 }
             }
@@ -346,11 +476,23 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             MouseArea {
                 anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.SizeHorCursor
-                property real startX: 0; property real sCropW: 0
-                onPressed: m => { startX = m.x; sCropW = root.cropW; }
+                property real startX: 0
+                property real sCropX: 0; property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
+                onPressed: m => { startX = m.x; sCropX = root.cropX; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
                 onPositionChanged: m => {
                     var dx = (m.x - startX) / root.zoomFactor;
-                    root.cropW = sCropW + dx;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var newW = Math.max(20, sCropW + dx);
+                        var newH = newW / r;
+                        var diffH = newH - sCropH;
+                        root.cropX = sCropX;
+                        root.cropY = sCropY - diffH / 2;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropW = sCropW + dx;
+                    }
                     root.clampCrop();
                 }
             }
@@ -363,13 +505,23 @@ Item {
             MouseArea {
                 anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.SizeFDiagCursor
                 property real startX: 0; property real startY: 0
-                property real sCropW: 0; property real sCropH: 0
-                onPressed: m => { startX = m.x; startY = m.y; sCropW = root.cropW; sCropH = root.cropH; }
+                property real sCropX: 0; property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
+                onPressed: m => { startX = m.x; startY = m.y; sCropX = root.cropX; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
                 onPositionChanged: m => {
                     var dx = (m.x - startX) / root.zoomFactor;
                     var dy = (m.y - startY) / root.zoomFactor;
-                    root.cropW = sCropW + dx;
-                    root.cropH = sCropH + dy;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var newW = Math.max(20, sCropW + dx);
+                        var newH = newW / r;
+                        root.cropX = sCropX;
+                        root.cropY = sCropY;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropW = sCropW + dx;
+                        root.cropH = sCropH + dy;
+                    }
                     root.clampCrop();
                 }
             }
@@ -381,11 +533,22 @@ Item {
             anchors.verticalCenter: parent.bottom
             MouseArea {
                 anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.SizeVerCursor
-                property real startY: 0; property real sCropH: 0
-                onPressed: m => { startY = m.y; sCropH = root.cropH; }
+                property real startY: 0; property real sCropX: 0; property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
+                onPressed: m => { startY = m.y; sCropX = root.cropX; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
                 onPositionChanged: m => {
                     var dy = (m.y - startY) / root.zoomFactor;
-                    root.cropH = sCropH + dy;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var newH = Math.max(20, sCropH + dy);
+                        var newW = newH * r;
+                        var diffW = newW - sCropW;
+                        root.cropX = sCropX - diffW / 2;
+                        root.cropY = sCropY;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropH = sCropH + dy;
+                    }
                     root.clampCrop();
                 }
             }
@@ -398,14 +561,25 @@ Item {
             MouseArea {
                 anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.SizeBDiagCursor
                 property real startX: 0; property real startY: 0
-                property real sCropX: 0; property real sCropW: 0; property real sCropH: 0
-                onPressed: m => { startX = m.x; startY = m.y; sCropX = root.cropX; sCropW = root.cropW; sCropH = root.cropH; }
+                property real sCropX: 0; property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
+                onPressed: m => { startX = m.x; startY = m.y; sCropX = root.cropX; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
                 onPositionChanged: m => {
                     var dx = (m.x - startX) / root.zoomFactor;
                     var dy = (m.y - startY) / root.zoomFactor;
-                    root.cropX = sCropX + dx;
-                    root.cropW = sCropW - dx;
-                    root.cropH = sCropH + dy;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var fixedRight = sCropX + sCropW;
+                        var newW = Math.max(20, sCropW - dx);
+                        var newH = newW / r;
+                        root.cropX = fixedRight - newW;
+                        root.cropY = sCropY;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropX = sCropX + dx;
+                        root.cropW = sCropW - dx;
+                        root.cropH = sCropH + dy;
+                    }
                     root.clampCrop();
                 }
             }
@@ -417,13 +591,87 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             MouseArea {
                 anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.SizeHorCursor
-                property real startX: 0; property real sCropX: 0; property real sCropW: 0
-                onPressed: m => { startX = m.x; sCropX = root.cropX; sCropW = root.cropW; }
+                property real startX: 0
+                property real sCropX: 0; property real sCropY: 0; property real sCropW: 0; property real sCropH: 0
+                onPressed: m => { startX = m.x; sCropX = root.cropX; sCropY = root.cropY; sCropW = root.cropW; sCropH = root.cropH; }
                 onPositionChanged: m => {
                     var dx = (m.x - startX) / root.zoomFactor;
-                    root.cropX = sCropX + dx;
-                    root.cropW = sCropW - dx;
+                    if (root.aspectRatio !== "FREE") {
+                        var r = root.getRatioValue(root.aspectRatio);
+                        var fixedRight = sCropX + sCropW;
+                        var newW = Math.max(20, sCropW - dx);
+                        var newH = newW / r;
+                        var diffH = newH - sCropH;
+                        root.cropX = fixedRight - newW;
+                        root.cropY = sCropY - diffH / 2;
+                        root.cropW = newW;
+                        root.cropH = newH;
+                    } else {
+                        root.cropX = sCropX + dx;
+                        root.cropW = sCropW - dx;
+                    }
                     root.clampCrop();
+                }
+            }
+        }
+    }
+
+    // Sleek Aspect Ratio Selector Bar
+    Rectangle {
+        id: ratioBar
+        anchors.top: parent.top
+        anchors.topMargin: 72
+        anchors.horizontalCenter: parent.horizontalCenter
+        height: 36
+        width: ratioRow.implicitWidth + 20
+        radius: 18
+        color: Qt.rgba(theme.darkerBackground.r, theme.darkerBackground.g, theme.darkerBackground.b, 0.94)
+        border.color: theme.accent
+        border.width: 1
+        z: 100
+
+        Row {
+            id: ratioRow
+            anchors.centerIn: parent
+            spacing: 4
+
+            Repeater {
+                model: [
+                    { id: "FREE", label: "Free" },
+                    { id: "1:1", label: "1:1" },
+                    { id: "16:9", label: "16:9" },
+                    { id: "4:3", label: "4:3" },
+                    { id: "3:2", label: "3:2" },
+                    { id: "9:16", label: "9:16" }
+                ]
+
+                delegate: Rectangle {
+                    id: ratioBtn
+                    height: 26
+                    width: btnText.implicitWidth + 16
+                    radius: 13
+                    property bool isSelected: root.aspectRatio === modelData.id
+                    color: isSelected ? theme.accent : (btnMouse.containsMouse ? theme.selection : "transparent")
+
+                    Text {
+                        id: btnText
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: ratioBtn.isSelected ? theme.darkerBackground : (btnMouse.containsMouse ? theme.brightForeground : theme.lightForeground)
+                        font.family: theme.fontFamily
+                        font.pixelSize: 11
+                        font.bold: ratioBtn.isSelected
+                    }
+
+                    MouseArea {
+                        id: btnMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.setAspectRatio(modelData.id);
+                        }
+                    }
                 }
             }
         }

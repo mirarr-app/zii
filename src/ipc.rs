@@ -41,6 +41,8 @@ pub enum ClientRequest {
     EditAdjust {
         brightness: i32,
         contrast: f32,
+        #[serde(default)]
+        saturation: i32,
     },
     EditResize {
         width: u32,
@@ -432,9 +434,9 @@ async fn process_request(
                 }
             }
         }
-        ClientRequest::EditAdjust { brightness, contrast } => {
+        ClientRequest::EditAdjust { brightness, contrast, saturation } => {
             if st.edit_active {
-                match st.editor.adjust(brightness, contrast) {
+                match st.editor.adjust(brightness, contrast, saturation) {
                     Ok(preview) => {
                         let (w, h) = st.editor.dimensions();
                         send_event(ServerEvent::EditState {

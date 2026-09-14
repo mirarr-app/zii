@@ -323,12 +323,13 @@ Rectangle {
         { keys: ["R"], desc: "Rotate 90° Counter-Clockwise" },
         { keys: ["h"], desc: "Flip Horizontal" },
         { keys: ["v"], desc: "Flip Vertical" },
-        { keys: ["a"], desc: "Toggle Adjustments (Bright/Contrast)" }
+        { keys: ["a"], desc: "Toggle Adjustments (Bright/Contrast/Sat)" }
     ]
 
     readonly property var editControlsModel: [
+        { keys: ["0 - 4"], desc: "Aspect ratio (0:Free, 1:1:1, 2:16:9, 3:4:3, 4:3:2)" },
         { keys: ["Arrows"], desc: "Move crop box (in Crop mode)" },
-        { keys: ["Shift+Arr"], desc: "Resize crop box (in Crop mode)" },
+        { keys: ["Shift+Arr"], desc: "Resize crop box (enforces aspect ratio)" },
         { keys: ["Enter"], desc: "Apply crop to image" },
         { keys: ["[", "]"], desc: "Decrease / increase slider value" },
         { keys: ["Handles"], desc: "Drag 8 corner/edge resize handles" }

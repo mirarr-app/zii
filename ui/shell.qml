@@ -228,11 +228,12 @@ ShellRoot {
                 anchors.rightMargin: 24
                 active: false
 
-                onAdjustmentsApplied: (bright, cont) => {
+                onAdjustmentsApplied: (bright, cont, sat) => {
                     root.sendIpc({
                         type: "edit_adjust",
                         brightness: bright,
-                        contrast: cont
+                        contrast: cont,
+                        saturation: sat
                     });
                 }
             }
@@ -413,6 +414,9 @@ ShellRoot {
                 }
                 onCropAdjustEdge: (edge, dir) => {
                     cropOverlay.adjustEdge(edge, dir);
+                }
+                onCropSetAspectRatio: ratio => {
+                    cropOverlay.setAspectRatio(ratio);
                 }
 
                 onRotateCW: {

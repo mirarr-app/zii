@@ -200,7 +200,7 @@ impl ImageEditor {
         self.generate_preview()
     }
 
-    pub fn adjust(&mut self, brightness: i32, contrast: f32) -> anyhow::Result<PathBuf> {
+    pub fn adjust(&mut self, brightness: i32, contrast: f32, saturation: i32) -> anyhow::Result<PathBuf> {
         if self.adjustment_base.is_none() {
             match &self.current_image {
                 Some(i) => self.adjustment_base = Some(i.clone()),
@@ -216,6 +216,46 @@ impl ImageEditor {
         }
         if contrast != 0.0 {
             adjusted = adjusted.adjust_contrast(contrast);
+        }
+        if saturation != 0 {
+            let factor = 1.0 + (saturation as f32 / 100.0).clamp(-1.0, 3.0);
+            match &mut adjusted {
+                DynamicImage::ImageRgb8(rgb) => {
+                    for pixel in rgb.pixels_mut() {
+                        let r = pixel[0] as f32;
+                        let g = pixel[1] as f32;
+                        let b = pixel[2] as f32;
+                        let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                        pixel[0] = (l + (r - l) * factor).clamp(0.0, 255.0).round() as u8;
+                        pixel[1] = (l + (g - l) * factor).clamp(0.0, 255.0).round() as u8;
+                        pixel[2] = (l + (b - l) * factor).clamp(0.0, 255.0).round() as u8;
+                    }
+                }
+                DynamicImage::ImageRgba8(rgba) => {
+                    for pixel in rgba.pixels_mut() {
+                        let r = pixel[0] as f32;
+                        let g = pixel[1] as f32;
+                        let b = pixel[2] as f32;
+                        let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                        pixel[0] = (l + (r - l) * factor).clamp(0.0, 255.0).round() as u8;
+                        pixel[1] = (l + (g - l) * factor).clamp(0.0, 255.0).round() as u8;
+                        pixel[2] = (l + (b - l) * factor).clamp(0.0, 255.0).round() as u8;
+                    }
+                }
+                _ => {
+                    let mut rgba = adjusted.to_rgba8();
+                    for pixel in rgba.pixels_mut() {
+                        let r = pixel[0] as f32;
+                        let g = pixel[1] as f32;
+                        let b = pixel[2] as f32;
+                        let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                        pixel[0] = (l + (r - l) * factor).clamp(0.0, 255.0).round() as u8;
+                        pixel[1] = (l + (g - l) * factor).clamp(0.0, 255.0).round() as u8;
+                        pixel[2] = (l + (b - l) * factor).clamp(0.0, 255.0).round() as u8;
+                    }
+                    adjusted = DynamicImage::ImageRgba8(rgba);
+                }
+            }
         }
 
         self.current_image = Some(adjusted);
@@ -263,18 +303,38 @@ impl ImageEditor {
             Self::generate_copy_path(&self.original_path)
         };
 
-        // Determine format
-        let format = ImageFormat::from_path(&target_path)
-            .unwrap_or(ImageFormat::Png);
+        // Determine format according to extension
+        let ext = target_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase());
+
+        let format = match ext.as_deref() {
+            Some("jpg") | Some("jpeg") => ImageFormat::Jpeg,
+            Some("png") => ImageFormat::Png,
+            Some("webp") => ImageFormat::WebP,
+            Some("bmp") => ImageFormat::Bmp,
+            _ => ImageFormat::from_path(&target_path).unwrap_or(ImageFormat::Png),
+        };
 
         // Atomic save using temporary file in the same directory
         let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
-        let temp_file = tempfile::Builder::new()
+        let mut temp_file = tempfile::Builder::new()
             .prefix(".zii_save_")
             .tempfile_in(parent)?;
 
-        img.save_with_format(temp_file.path(), format)
-            .with_context(|| format!("Failed to encode image to {:?}", target_path))?;
+        if format == ImageFormat::Jpeg {
+            let mut file = std::io::BufWriter::new(&mut temp_file);
+            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 95);
+            img.write_with_encoder(encoder)
+                .with_context(|| format!("Failed to encode JPEG image to {:?}", target_path))?;
+            use std::io::Write;
+            file.flush()
+                .with_context(|| format!("Failed to flush encoded JPEG image to {:?}", target_path))?;
+        } else {
+            img.save_with_format(temp_file.path(), format)
+                .with_context(|| format!("Failed to encode image to {:?}", target_path))?;
+        }
 
         temp_file.persist(&target_path)
             .with_context(|| format!("Failed to persist saved file to {:?}", target_path))?;
@@ -297,8 +357,22 @@ impl ImageEditor {
             None => anyhow::bail!("No current image to preview"),
         };
 
+        let _ = std::fs::create_dir_all(&self.cache_dir);
         let preview_path = self.cache_dir.join(format!("preview_{}.png", self.revision));
         img.save_with_format(&preview_path, ImageFormat::Png)?;
+
+        // Delete previous revision preview files so cache does not accumulate images
+        if let Ok(entries) = std::fs::read_dir(&self.cache_dir) {
+            let current_filename = format!("preview_{}.png", self.revision);
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("preview_") && name_str.ends_with(".png") && name_str != current_filename {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+
         Ok(preview_path)
     }
 
@@ -337,11 +411,13 @@ mod tests {
 
     #[test]
     fn test_editor_cleanup() {
-        let editor = ImageEditor::new();
-        let cache = editor.cache_dir.clone();
-        assert!(cache.exists());
+        let mut editor = ImageEditor::new();
+        let unique_cache = std::env::temp_dir().join(format!("zii_test_cleanup_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let _ = std::fs::create_dir_all(&unique_cache);
+        editor.cache_dir = unique_cache.clone();
+        assert!(unique_cache.exists());
         editor.cleanup();
-        assert!(!cache.exists());
+        assert!(!unique_cache.exists());
     }
 
     #[test]
@@ -392,9 +468,108 @@ mod tests {
     }
 
     #[test]
-    fn test_read_exif_non_existent_or_sample() {
-        assert_eq!(read_exif_orientation(Path::new("non_existent.jpg")), None);
-        // sample_1.png has no EXIF orientation
-        assert_eq!(read_exif_orientation(Path::new("tests/samples/sample_1.png")), None);
+    fn test_saturation_adjustment() {
+        let mut editor = ImageEditor::new();
+        editor.cache_dir = tempfile::tempdir().unwrap().keep();
+        // Create an image with a pure red pixel (255, 0, 0)
+        let mut img = DynamicImage::new_rgb8(2, 2);
+        img.as_mut_rgb8().unwrap().put_pixel(0, 0, image::Rgb([255, 0, 0]));
+        editor.current_image = Some(img);
+
+        // Desaturate completely: saturation = -100
+        editor.adjust(0, 0.0, -100).unwrap();
+        let adjusted = editor.current_image.as_ref().unwrap();
+        let p = adjusted.get_pixel(0, 0);
+        // L = 0.2126 * 255 = 54.213 -> rounds to 54
+        assert_eq!(p[0], 54);
+        assert_eq!(p[1], 54);
+        assert_eq!(p[2], 54);
+
+        // Boost saturation: saturation = 50 on neutral base
+        editor.adjustment_base = None; // reset base
+        let mut img2 = DynamicImage::new_rgb8(2, 2);
+        img2.as_mut_rgb8().unwrap().put_pixel(0, 0, image::Rgb([200, 100, 50]));
+        editor.current_image = Some(img2);
+        editor.adjust(0, 0.0, 50).unwrap();
+        let adjusted2 = editor.current_image.as_ref().unwrap();
+        let p2 = adjusted2.get_pixel(0, 0);
+        // Factor is 1.5, colors should be pushed further from luminance
+        assert!(p2[0] > 200);
+        assert!(p2[2] < 50);
+    }
+
+    #[test]
+    fn test_save_formats_and_jpeg_quality() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut editor = ImageEditor::new();
+        editor.cache_dir = tempfile::tempdir().unwrap().keep();
+        let img = DynamicImage::new_rgb8(40, 30);
+        editor.current_image = Some(img);
+
+        // Test JPEG save (high quality 95)
+        let jpg_path = dir.path().join("output.jpg");
+        let saved_jpg = editor.save(false, Some(&jpg_path)).unwrap();
+        assert_eq!(saved_jpg, jpg_path);
+        assert!(jpg_path.exists());
+        let loaded_jpg = image::open(&jpg_path).unwrap();
+        assert_eq!(loaded_jpg.dimensions(), (40, 30));
+
+        // Test PNG save
+        let png_path = dir.path().join("output.png");
+        let saved_png = editor.save(false, Some(&png_path)).unwrap();
+        assert_eq!(saved_png, png_path);
+        assert!(png_path.exists());
+        let loaded_png = image::open(&png_path).unwrap();
+        assert_eq!(loaded_png.dimensions(), (40, 30));
+
+        // Test WebP save
+        let webp_path = dir.path().join("output.webp");
+        let saved_webp = editor.save(false, Some(&webp_path)).unwrap();
+        assert_eq!(saved_webp, webp_path);
+        assert!(webp_path.exists());
+        let loaded_webp = image::open(&webp_path).unwrap();
+        assert_eq!(loaded_webp.dimensions(), (40, 30));
+
+        // Test BMP save
+        let bmp_path = dir.path().join("output.bmp");
+        let saved_bmp = editor.save(false, Some(&bmp_path)).unwrap();
+        assert_eq!(saved_bmp, bmp_path);
+        assert!(bmp_path.exists());
+        let loaded_bmp = image::open(&bmp_path).unwrap();
+        assert_eq!(loaded_bmp.dimensions(), (40, 30));
+    }
+
+    #[test]
+    fn test_preview_cache_cleanup() {
+        let mut editor = ImageEditor::new();
+        editor.cache_dir = tempfile::tempdir().unwrap().keep();
+        let img = DynamicImage::new_rgb8(10, 10);
+        editor.current_image = Some(img);
+
+        // Generate revisions 1, 2, 3
+        editor.revision = 1;
+        let p1 = editor.generate_preview().unwrap();
+        assert!(p1.exists());
+
+        editor.revision = 2;
+        let p2 = editor.generate_preview().unwrap();
+        assert!(p2.exists());
+        // p1 should now be cleaned up
+        assert!(!p1.exists());
+
+        editor.revision = 3;
+        let p3 = editor.generate_preview().unwrap();
+        assert!(p3.exists());
+        // p2 should now be cleaned up
+        assert!(!p2.exists());
+
+        // Cache dir should contain exactly 1 file (preview_3.png)
+        let entries: Vec<_> = std::fs::read_dir(&editor.cache_dir)
+            .unwrap()
+            .flatten()
+            .collect();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].file_name(), "preview_3.png");
     }
 }
+

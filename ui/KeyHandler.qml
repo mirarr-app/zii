@@ -33,6 +33,7 @@ Item {
     signal cropMove(real dx, real dy)
     signal cropResize(real dw, real dh)
     signal cropAdjustEdge(string edge, int dir)
+    signal cropSetAspectRatio(string ratio)
 
     signal rotateCW()
     signal rotateCCW()
@@ -123,6 +124,31 @@ Item {
             if (root.cropActive) {
                 if (key === Qt.Key_Return || key === Qt.Key_Enter) {
                     root.applyCrop();
+                    event.accepted = true;
+                    return;
+                }
+                if (text === "0") {
+                    root.cropSetAspectRatio("FREE");
+                    event.accepted = true;
+                    return;
+                }
+                if (text === "1") {
+                    root.cropSetAspectRatio("1:1");
+                    event.accepted = true;
+                    return;
+                }
+                if (text === "2") {
+                    root.cropSetAspectRatio("16:9");
+                    event.accepted = true;
+                    return;
+                }
+                if (text === "3") {
+                    root.cropSetAspectRatio("4:3");
+                    event.accepted = true;
+                    return;
+                }
+                if (text === "4") {
+                    root.cropSetAspectRatio("3:2");
                     event.accepted = true;
                     return;
                 }
