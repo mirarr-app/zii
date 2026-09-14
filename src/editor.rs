@@ -20,6 +20,30 @@ impl Default for Adjustments {
     }
 }
 
+pub fn read_exif_orientation(path: &Path) -> Option<u32> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut bufreader = std::io::BufReader::new(file);
+    let exifreader = exif::Reader::new();
+    let exif = exifreader.read_from_container(&mut bufreader).ok()?;
+    let orientation = exif
+        .get_field(exif::Tag::Orientation, exif::In::PRIMARY)
+        .and_then(|f| f.value.get_uint(0))?;
+    Some(orientation)
+}
+
+pub fn apply_orientation(img: DynamicImage, orientation: u32) -> DynamicImage {
+    match orientation {
+        2 => img.fliph(),
+        3 => img.rotate180(),
+        4 => img.flipv(),
+        5 => img.rotate90().fliph(),
+        6 => img.rotate90(),
+        7 => img.rotate270().fliph(),
+        8 => img.rotate270(),
+        _ => img,
+    }
+}
+
 pub struct ImageEditor {
     pub original_path: PathBuf,
     pub base_image: Option<DynamicImage>,
@@ -58,8 +82,11 @@ impl ImageEditor {
 
     pub fn open(&mut self, path: &Path) -> anyhow::Result<PathBuf> {
         self.original_path = path.to_path_buf();
-        let img = image::open(path)
+        let mut img = image::open(path)
             .with_context(|| format!("Failed to open image at {:?}", path))?;
+        if let Some(orientation) = read_exif_orientation(path) {
+            img = apply_orientation(img, orientation);
+        }
         self.base_image = Some(img.clone());
         self.current_image = Some(img);
         self.adjustment_base = None;
@@ -315,5 +342,59 @@ mod tests {
         assert!(cache.exists());
         editor.cleanup();
         assert!(!cache.exists());
+    }
+
+    #[test]
+    fn test_apply_orientation() {
+        // Create 20x10 image with top-left pixel black (0,0) and bottom-right pixel white (19,9)
+        let mut img = DynamicImage::new_rgba8(20, 10);
+        img.as_mut_rgba8().unwrap().put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
+
+        // Orientation 1: unchanged
+        let o1 = apply_orientation(img.clone(), 1);
+        assert_eq!(o1.dimensions(), (20, 10));
+        assert_eq!(o1.as_rgba8().unwrap().get_pixel(0, 0)[0], 255);
+
+        // Orientation 3: rotate 180 (red pixel moves to 19, 9)
+        let o3 = apply_orientation(img.clone(), 3);
+        assert_eq!(o3.dimensions(), (20, 10));
+        assert_eq!(o3.as_rgba8().unwrap().get_pixel(19, 9)[0], 255);
+
+        // Orientation 6: rotate 90 CW (dimensions swap to 10, 20)
+        let o6 = apply_orientation(img.clone(), 6);
+        assert_eq!(o6.dimensions(), (10, 20));
+        assert_eq!(o6.as_rgba8().unwrap().get_pixel(9, 0)[0], 255);
+
+        // Orientation 2: flip horizontal (red pixel moves to 19, 0)
+        let o2 = apply_orientation(img.clone(), 2);
+        assert_eq!(o2.dimensions(), (20, 10));
+        assert_eq!(o2.as_rgba8().unwrap().get_pixel(19, 0)[0], 255);
+
+        // Orientation 4: flip vertical (red pixel moves to 0, 9)
+        let o4 = apply_orientation(img.clone(), 4);
+        assert_eq!(o4.dimensions(), (20, 10));
+        assert_eq!(o4.as_rgba8().unwrap().get_pixel(0, 9)[0], 255);
+
+        // Orientation 5: transpose (dimensions swap to 10, 20, red pixel at 0, 0)
+        let o5 = apply_orientation(img.clone(), 5);
+        assert_eq!(o5.dimensions(), (10, 20));
+        assert_eq!(o5.as_rgba8().unwrap().get_pixel(0, 0)[0], 255);
+
+        // Orientation 7: transverse (dimensions swap to 10, 20, red pixel at 9, 19)
+        let o7 = apply_orientation(img.clone(), 7);
+        assert_eq!(o7.dimensions(), (10, 20));
+        assert_eq!(o7.as_rgba8().unwrap().get_pixel(9, 19)[0], 255);
+
+        // Orientation 8: rotate 270 CW (dimensions swap to 10, 20)
+        let o8 = apply_orientation(img.clone(), 8);
+        assert_eq!(o8.dimensions(), (10, 20));
+        assert_eq!(o8.as_rgba8().unwrap().get_pixel(0, 19)[0], 255);
+    }
+
+    #[test]
+    fn test_read_exif_non_existent_or_sample() {
+        assert_eq!(read_exif_orientation(Path::new("non_existent.jpg")), None);
+        // sample_1.png has no EXIF orientation
+        assert_eq!(read_exif_orientation(Path::new("tests/samples/sample_1.png")), None);
     }
 }

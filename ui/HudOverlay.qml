@@ -12,6 +12,10 @@ Rectangle {
     property real zoomFactor: 1.0
     property int currentIndex: 0
     property int totalCount: 0
+    property bool isAnimated: false
+    property bool isPlaying: true
+    property int currentFrame: 0
+    property int frameCount: 1
     property bool autoHide: true
     property bool userActive: true
 
@@ -145,6 +149,29 @@ Rectangle {
             font.family: theme.fontFamily
             font.pixelSize: theme.baseFontSize - 1
             font.bold: true
+        }
+
+        // Animated GIF / WebP playback & frame badge
+        Rectangle {
+            id: animBadge
+            height: 22
+            width: animText.implicitWidth + 14
+            radius: 11
+            anchors.verticalCenter: parent.verticalCenter
+            color: root.isPlaying ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.2) : Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, 0.6)
+            border.color: root.isPlaying ? theme.accent : Qt.rgba(theme.muted.r, theme.muted.g, theme.muted.b, 0.5)
+            border.width: 1
+            visible: root.isAnimated && root.frameCount > 1
+
+            Text {
+                id: animText
+                anchors.centerIn: parent
+                text: (root.isPlaying ? "▶ " : "⏸ ") + (root.currentFrame + 1) + "/" + root.frameCount
+                color: root.isPlaying ? theme.accent : theme.lightForeground
+                font.family: theme.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Medium
+            }
         }
 
         // Index / Count badge

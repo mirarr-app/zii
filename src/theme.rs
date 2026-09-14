@@ -176,7 +176,7 @@ impl ThemeManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::OmarchyTheme;
 
     #[test]
     fn test_theme_key_resolution() {

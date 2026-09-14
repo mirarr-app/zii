@@ -156,7 +156,7 @@ impl DirectoryScanner {
             .unwrap_or("")
             .to_ascii_lowercase();
 
-        let (width, height) = if ext == "svg" {
+        let (mut width, mut height) = if ext == "svg" {
             // Read dimensions from SVG if possible or default to 1024x1024
             Self::probe_svg_dimensions(path).unwrap_or((1024, 1024))
         } else {
@@ -165,6 +165,12 @@ impl DirectoryScanner {
                 Err(_) => (0, 0),
             }
         };
+
+        if let Some(orientation) = crate::editor::read_exif_orientation(path) {
+            if (5..=8).contains(&orientation) {
+                std::mem::swap(&mut width, &mut height);
+            }
+        }
 
         Some(ImageEntry {
             path: path.canonicalize().unwrap_or_else(|_| path.to_path_buf()),

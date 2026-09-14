@@ -19,6 +19,7 @@ Item {
     signal zoomReset()
     signal zoom100()
     signal toggleFullscreen()
+    signal togglePlayback()
     signal deleteCurrent(bool permanent)
     signal restoreTrash()
     signal enterEditMode()
@@ -225,6 +226,13 @@ Item {
         }
 
         // ================= NORMAL MODE =================
+        // Play / pause animated playback
+        if (key === Qt.Key_Space) {
+            root.togglePlayback();
+            event.accepted = true;
+            return;
+        }
+
         // Fullscreen toggle
         if (key === Qt.Key_F || key === Qt.Key_F11) {
             root.toggleFullscreen();

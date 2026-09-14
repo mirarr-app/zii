@@ -10,34 +10,97 @@ Item {
     property real zoomFactor: 1.0
     property real panX: 0
     property real panY: 0
+    property bool isEditing: false
 
     signal interactionOccurred()
     signal doubleClicked()
 
     property bool userInteracted: false
 
+    // Animated format detection (.gif or .webp)
+    readonly property bool isAnimated: {
+        if (!source) return false;
+        var s = source.toLowerCase();
+        return s.indexOf(".gif") !== -1 || s.indexOf(".webp") !== -1;
+    }
+
+    // Playback status and frame indicators exposed
+    readonly property bool isPlaying: isAnimated && (frameCount > 1) && (!animImage.paused && animImage.playing)
+    readonly property int currentFrame: isAnimated ? animImage.currentFrame : 0
+    readonly property int frameCount: isAnimated ? animImage.frameCount : 1
+
     clip: true
 
     onSourceChanged: {
-        userInteracted = false;
-        resetView();
+        if (!isEditing) {
+            userInteracted = false;
+            if (animImage) animImage.paused = false;
+            resetView();
+        }
     }
 
     onWidthChanged: {
-        if (!userInteracted && width > 0 && height > 0) {
+        if (!isEditing && !userInteracted && width > 0 && height > 0) {
             resetView();
         }
     }
 
     onHeightChanged: {
-        if (!userInteracted && width > 0 && height > 0) {
+        if (!isEditing && !userInteracted && width > 0 && height > 0) {
             resetView();
         }
     }
 
+    function togglePlayback() {
+        if (isAnimated && frameCount > 1) {
+            animImage.paused = !animImage.paused;
+            interactionOccurred();
+        }
+    }
+
+    function activeSourceWidth() {
+        var item = isAnimated ? animImage : mainImage;
+        return (item && item.sourceSize.width > 0) ? item.sourceSize.width : 0;
+    }
+
+    function activeSourceHeight() {
+        var item = isAnimated ? animImage : mainImage;
+        return (item && item.sourceSize.height > 0) ? item.sourceSize.height : 0;
+    }
+
+    function naturalW() {
+        var sw = activeSourceWidth();
+        return imgNaturalWidth > 0 ? imgNaturalWidth : (sw > 0 ? sw : 0);
+    }
+
+    function naturalH() {
+        var sh = activeSourceHeight();
+        return imgNaturalHeight > 0 ? imgNaturalHeight : (sh > 0 ? sh : 0);
+    }
+
+    function clampPanX(val, curW) {
+        if (width <= 0 || curW <= 0) return val;
+        // Keep at least 50px or 20% of image width inside the viewport
+        var margin = Math.min(50, curW * 0.2);
+        var minX = margin - curW;
+        var maxX = width - margin;
+        if (minX > maxX) return Math.round((width - curW) / 2);
+        return Math.max(minX, Math.min(maxX, val));
+    }
+
+    function clampPanY(val, curH) {
+        if (height <= 0 || curH <= 0) return val;
+        // Keep at least 50px or 20% of image height inside the viewport
+        var margin = Math.min(50, curH * 0.2);
+        var minY = margin - curH;
+        var maxY = height - margin;
+        if (minY > maxY) return Math.round((height - curH) / 2);
+        return Math.max(minY, Math.min(maxY, val));
+    }
+
     function fitScale() {
-        var nw = imgNaturalWidth > 0 ? imgNaturalWidth : (mainImage.sourceSize.width > 0 ? mainImage.sourceSize.width : 0);
-        var nh = imgNaturalHeight > 0 ? imgNaturalHeight : (mainImage.sourceSize.height > 0 ? mainImage.sourceSize.height : 0);
+        var nw = naturalW();
+        var nh = naturalH();
 
         if (nw <= 0 || nh <= 0 || width <= 0 || height <= 0) {
             return 1.0;
@@ -48,8 +111,8 @@ Item {
     }
 
     function resetView() {
-        var nw = imgNaturalWidth > 0 ? imgNaturalWidth : (mainImage.sourceSize.width > 0 ? mainImage.sourceSize.width : 0);
-        var nh = imgNaturalHeight > 0 ? imgNaturalHeight : (mainImage.sourceSize.height > 0 ? mainImage.sourceSize.height : 0);
+        var nw = naturalW();
+        var nh = naturalH();
 
         if (nw <= 0 || nh <= 0 || width <= 0 || height <= 0) {
             zoomFactor = 1.0;
@@ -85,16 +148,24 @@ Item {
 
         userInteracted = true;
         zoomFactor = newScale;
-        panX = focalX - imgX * newScale;
-        panY = focalY - imgY * newScale;
+
+        var targetPanX = focalX - imgX * newScale;
+        var targetPanY = focalY - imgY * newScale;
+        var nw = naturalW();
+        var nh = naturalH();
+
+        panX = clampPanX(targetPanX, nw * newScale);
+        panY = clampPanY(targetPanY, nh * newScale);
 
         interactionOccurred();
     }
 
     function panBy(dx, dy) {
         userInteracted = true;
-        panX += dx;
-        panY += dy;
+        var nw = naturalW();
+        var nh = naturalH();
+        panX = clampPanX(panX + dx, nw * zoomFactor);
+        panY = clampPanY(panY + dy, nh * zoomFactor);
         interactionOccurred();
     }
 
@@ -108,25 +179,55 @@ Item {
         id: transformContainer
         x: root.panX
         y: root.panY
-        width: Math.max(1, (root.imgNaturalWidth > 0 ? root.imgNaturalWidth : mainImage.sourceSize.width) * root.zoomFactor)
-        height: Math.max(1, (root.imgNaturalHeight > 0 ? root.imgNaturalHeight : mainImage.sourceSize.height) * root.zoomFactor)
+        width: Math.max(1, root.naturalW() * root.zoomFactor)
+        height: Math.max(1, root.naturalH() * root.zoomFactor)
 
         Image {
             id: mainImage
             anchors.fill: parent
-            source: root.source ? (root.source.indexOf("file://") === 0 ? root.source : ("file://" + root.source)) : ""
+            visible: !root.isAnimated
+            source: (!root.isAnimated && root.source) ? (root.source.indexOf("file://") === 0 ? root.source : ("file://" + root.source)) : ""
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: false
-            smooth: true
-            mipmap: true
+            autoTransform: true
+            smooth: root.zoomFactor <= 1.5
+            mipmap: root.zoomFactor <= 1.5
 
             onStatusChanged: {
                 if (status === Image.Ready) {
                     if (sourceSize.width > 0) {
                         root.imgNaturalWidth = sourceSize.width;
                         root.imgNaturalHeight = sourceSize.height;
-                        root.resetView();
+                        if (!root.isEditing && !root.userInteracted) {
+                            root.resetView();
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedImage {
+            id: animImage
+            anchors.fill: parent
+            visible: root.isAnimated
+            source: (root.isAnimated && root.source) ? (root.source.indexOf("file://") === 0 ? root.source : ("file://" + root.source)) : ""
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            cache: false
+            autoTransform: true
+            smooth: root.zoomFactor <= 1.5
+            mipmap: root.zoomFactor <= 1.5
+            playing: true
+
+            onStatusChanged: {
+                if (status === AnimatedImage.Ready) {
+                    if (sourceSize.width > 0) {
+                        root.imgNaturalWidth = sourceSize.width;
+                        root.imgNaturalHeight = sourceSize.height;
+                        if (!root.isEditing && !root.userInteracted) {
+                            root.resetView();
+                        }
                     }
                 }
             }
@@ -160,8 +261,10 @@ Item {
         onPositionChanged: mouse => {
             root.interactionOccurred();
             if (isDragging) {
-                root.panX = startPanX + (mouse.x - startMouseX);
-                root.panY = startPanY + (mouse.y - startMouseY);
+                var nw = root.naturalW();
+                var nh = root.naturalH();
+                root.panX = root.clampPanX(startPanX + (mouse.x - startMouseX), nw * root.zoomFactor);
+                root.panY = root.clampPanY(startPanY + (mouse.y - startMouseY), nh * root.zoomFactor);
             }
         }
 

@@ -183,6 +183,7 @@ ShellRoot {
                 source: root.activeImagePath
                 imgNaturalWidth: root.displayWidth
                 imgNaturalHeight: root.displayHeight
+                isEditing: root.currentMode === "EDIT"
 
                 onInteractionOccurred: {
                     hud.wake();
@@ -326,6 +327,10 @@ ShellRoot {
                 zoomFactor: canvas.zoomFactor
                 currentIndex: root.currentIndex
                 totalCount: root.totalCount
+                isAnimated: canvas.isAnimated
+                isPlaying: canvas.isPlaying
+                currentFrame: canvas.currentFrame
+                frameCount: canvas.frameCount
             }
 
             // Help overlay modal (toggled by '?')
@@ -353,6 +358,10 @@ ShellRoot {
 
                 onToggleHelp: {
                     helpOverlay.active = !helpOverlay.active;
+                }
+
+                onTogglePlayback: {
+                    canvas.togglePlayback();
                 }
 
                 onNavigateNext: {

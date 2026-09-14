@@ -303,6 +303,7 @@ Rectangle {
     ]
 
     readonly property var actionsShortcutsModel: [
+        { keys: ["Space"], desc: "Play / pause animated GIF or WebP" },
         { keys: ["i"], desc: "Enter Edit Mode" },
         { keys: ["dd"], desc: "Move photo directly to Trash" },
         { keys: ["u"], desc: "Undo last delete (restore from trash)" },
