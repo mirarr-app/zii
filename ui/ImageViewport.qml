@@ -171,7 +171,12 @@ Item {
 
         onWheel: wheel => {
             root.interactionOccurred();
-            var factor = wheel.angleDelta.y > 0 ? 1.15 : 0.85;
+            var dy = wheel.angleDelta.y;
+            if (dy === 0) dy = wheel.pixelDelta.y * 8;
+            if (dy === 0) return;
+            // Proportional zoom factor: standard mouse wheel click (120 units) gives ~1.12x
+            // Fine-grained touchpad events (5-20 units) zoom smoothly by ~1.005x - 1.02x
+            var factor = Math.exp(dy / 1000.0);
             root.zoomTo(root.zoomFactor * factor, wheel.x, wheel.y);
             wheel.accepted = true;
         }
