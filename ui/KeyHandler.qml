@@ -7,8 +7,10 @@ Item {
     property bool cropActive: false
     property bool adjustActive: false
     property bool saveDialogActive: false
+    property bool helpActive: false
 
     // Signals emitted for actions
+    signal toggleHelp()
     signal navigatePrev()
     signal navigateNext()
     signal pan(real dx, real dy)
@@ -52,6 +54,24 @@ Item {
         var modifiers = event.modifiers;
         var hasCtrl = (modifiers & Qt.ControlModifier) !== 0;
         var hasShift = (modifiers & Qt.ShiftModifier) !== 0;
+
+        // Help overlay intercepts keys when active
+        if (root.helpActive) {
+            if (key === Qt.Key_Escape || text === "?") {
+                root.toggleHelp();
+                event.accepted = true;
+                return;
+            }
+            event.accepted = true;
+            return;
+        }
+
+        // Global shortcut: '?' toggles help in any mode
+        if (text === "?") {
+            root.toggleHelp();
+            event.accepted = true;
+            return;
+        }
 
         // Save dialog intercepts keys first
         if (root.saveDialogActive) {

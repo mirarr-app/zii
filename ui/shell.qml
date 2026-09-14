@@ -324,6 +324,20 @@ ShellRoot {
                 totalCount: root.totalCount
             }
 
+            // Help overlay modal (toggled by '?')
+            HelpOverlay {
+                id: helpOverlay
+                theme: theme
+                mode: root.currentMode
+                cropActive: cropOverlay.active
+                adjustActive: adjPanel.active
+                active: false
+
+                onClosed: {
+                    helpOverlay.active = false;
+                }
+            }
+
             // Keyboard Dispatcher
             KeyHandler {
                 id: keyHandler
@@ -331,6 +345,11 @@ ShellRoot {
                 cropActive: cropOverlay.active
                 adjustActive: adjPanel.active
                 saveDialogActive: saveDlg.active
+                helpActive: helpOverlay.active
+
+                onToggleHelp: {
+                    helpOverlay.active = !helpOverlay.active;
+                }
 
                 onNavigateNext: {
                     root.sendIpc({ type: "navigate", direction: "next", target: null });
