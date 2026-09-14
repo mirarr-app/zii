@@ -1,4 +1,4 @@
-# Zii (字 / 視) — Photo Viewer & Editor for Omarchy Linux
+# Zii (字) — Photo Viewer & Editor for Omarchy Linux
 
 **Zii** is a high-performance, keyboard-driven photo viewer and non-destructive image editor designed specifically for **Omarchy Linux**. Built with a multithreaded **Rust** core and a fluid **Quickshell** (Qt QML) frontend, it features Vim-style modal navigation and editing, instant trash undo, and real-time Omarchy theme hot-reloading.
 
@@ -150,7 +150,4 @@ sudo ./install.sh
 
 ## Releases & CI/CD
 
-Automated builds and releases are managed via GitHub Actions:
-- **Releases (`.github/workflows/release.yml`)**: Triggered when pushing stable version tags (e.g. `git tag v0.1.0 && git push --tags`). Builds the release package, runs test suites, creates tarballs (`zii-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz`) with SHA256 checksums, and publishes full GitHub Releases.
-- **Pre-releases (`.github/workflows/prerelease.yml`)**: Triggered when pushing pre-release tags (e.g. `v0.1.0-beta.1`, `v0.1.0-rc1`) or dispatched manually. Publishes pre-releases marked with `prerelease: true`.
-
+Automated builds and releases are managed via GitHub Actions
