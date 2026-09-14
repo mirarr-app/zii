@@ -6,14 +6,13 @@
 
 ## Features
 
-- ⚡ **Blazing Performance**: Native Rust image processing engine handling JPEG, PNG, WebP, GIF, BMP, TIFF, SVG, and ICO.
-- 🎨 **Live Omarchy Theming**: Automatically syncs with `~/.local/state/omarchy/current/theme/colors.toml` in real time with zero restart required, supporting both canonical Quattro semantic roles and legacy theme keys.
-- 📐 **EXIF Auto-Orientation & Inspector (`e` / `x`)**: Automatically applies digital camera and smartphone EXIF orientation tags. Press `e` or `x` for a sleek metadata inspector showing camera model, lens, exposure, aperture, ISO, and focal length.
-- 📋 **Wayland Clipboard & Wallpaper**: Press `y` to yank the photo directly to the Wayland clipboard (`wl-copy`), `Y` to copy the file path, or `W` to set the image as the Omarchy desktop wallpaper (`omarchy-theme-bg-set`).
-- 🎞️ **Animated GIF & WebP Playback (`Space`)**: Fluid animated playback with pause, frame counter, and looping.
-- 🔍 **Crisp Pixel Zoom**: Automatic nearest-neighbor filtering above 150% zoom so pixel art, logos, and high-magnification details stay sharp instead of blurry.
-- 🔄 **Live Directory Watcher**: Detects newly captured screenshots, downloaded images, or files deleted in file managers (Yazi, Nautilus) in real-time.
-- ⌨️ **Vim-Modal Keybindings**:
+- **Live Omarchy Theming**: Automatically syncs with `~/.local/state/omarchy/current/theme/colors.toml` in real time with zero restart required, supporting both canonical Quattro semantic roles and legacy theme keys.
+- **EXIF Auto-Orientation & Inspector (`e` / `x`)**: Automatically applies digital camera and smartphone EXIF orientation tags. Press `e` or `x` for a sleek metadata inspector showing camera model, lens, exposure, aperture, ISO, and focal length.
+- **Wayland Clipboard & Wallpaper**: Press `y` to yank the photo directly to the Wayland clipboard (`wl-copy`), `Y` to copy the file path, or `W` to set the image as the Omarchy desktop wallpaper (`omarchy-theme-bg-set`).
+- **Animated GIF & WebP Playback (`Space`)**: Fluid animated playback with pause, frame counter, and looping.
+- **Crisp Pixel Zoom**: Automatic nearest-neighbor filtering above 150% zoom so pixel art, logos, and high-magnification details stay sharp instead of blurry.
+- **Live Directory Watcher**: Detects newly captured screenshots, downloaded images, or files deleted in file managers (Yazi, Nautilus) in real-time.
+- **Vim-Modal Keybindings**:
   - `h` / `l` / Arrow keys for browsing directory images.
   - `j` / `k` for panning when zoomed in (clamped to window boundaries).
   - `+` / `-` / `z` / `Z` / mouse wheel for smooth focal zooming; `0` to fit to window; `1` for 1:1 original scale.
@@ -21,14 +20,13 @@
   - `f` / `F11` for fullscreen toggle.
   - `i` enters **Edit Mode**.
   - `q` / `Esc` quits.
-- ✂️ **Non-Destructive Image Editor (`i`)**:
+- **Non-Destructive Image Editor (`i`)**:
   - **Crop (`c`)**: Interactive 8-handle crop overlay with rule-of-thirds grid and aspect ratio presets (`Free`, `1:1`, `16:9`, `4:3`, `3:2`, `9:16`). Drag handles with mouse or use arrow keys (move) and `Shift`+arrows (resize), then press `Enter` to apply.
   - **Rotate (`r` / `R`)**: 90° clockwise and counter-clockwise.
   - **Flip (`h` / `v`)**: Horizontal and vertical flipping.
   - **Adjustments (`a`)**: Live Brightness, Contrast, and Saturation sliders with keyboard brackets (`[` / `]`) and reset button.
   - **Undo / Redo (`u` / `Ctrl+r`)**: Full multi-step undo/redo stack. Viewport pan and zoom are smoothly preserved across edit operations.
   - **Atomic & High-Quality Saving (`w` / `s`)**: `w` overwrites original directly with atomic rename safety and 95% high-quality JPEG encoding; `s` opens quick choice to overwrite or save as a new copy (e.g. `_edited_1.png`).
-- 🕶️ **Minimalist Auto-Hiding HUD**: Floating translucent status pill showing mode, filename, resolution, filesize, zoom %, animation frame, and `[index/total]`. Automatically fades out during viewing and wakes on mouse or key input.
 
 ---
 
