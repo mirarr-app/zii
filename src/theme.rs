@@ -1,6 +1,6 @@
-use std::path::PathBuf;
+use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use notify::{Watcher, RecursiveMode, Event};
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -108,13 +108,31 @@ impl ThemeManager {
                 self.current_theme = OmarchyTheme {
                     name: theme_name,
                     background: get_str(&["bg", "background"], &self.current_theme.background),
-                    dark_background: get_str(&["dark_bg", "dark_background"], &self.current_theme.dark_background),
-                    darker_background: get_str(&["darker_bg", "darker_background"], &self.current_theme.darker_background),
-                    lighter_background: get_str(&["lighter_bg", "lighter_background"], &self.current_theme.lighter_background),
+                    dark_background: get_str(
+                        &["dark_bg", "dark_background"],
+                        &self.current_theme.dark_background,
+                    ),
+                    darker_background: get_str(
+                        &["darker_bg", "darker_background"],
+                        &self.current_theme.darker_background,
+                    ),
+                    lighter_background: get_str(
+                        &["lighter_bg", "lighter_background"],
+                        &self.current_theme.lighter_background,
+                    ),
                     foreground: get_str(&["fg", "foreground"], &self.current_theme.foreground),
-                    dark_foreground: get_str(&["dark_fg", "dark_foreground"], &self.current_theme.dark_foreground),
-                    light_foreground: get_str(&["light_fg", "light_foreground"], &self.current_theme.light_foreground),
-                    bright_foreground: get_str(&["bright_fg", "bright_foreground"], &self.current_theme.bright_foreground),
+                    dark_foreground: get_str(
+                        &["dark_fg", "dark_foreground"],
+                        &self.current_theme.dark_foreground,
+                    ),
+                    light_foreground: get_str(
+                        &["light_fg", "light_foreground"],
+                        &self.current_theme.light_foreground,
+                    ),
+                    bright_foreground: get_str(
+                        &["bright_fg", "bright_foreground"],
+                        &self.current_theme.bright_foreground,
+                    ),
                     accent: get_str(&["accent"], &self.current_theme.accent),
                     selection: get_str(&["selection"], &self.current_theme.selection),
                     muted: get_str(&["muted"], &self.current_theme.muted),
@@ -138,17 +156,18 @@ impl ThemeManager {
 
         tokio::task::spawn_blocking(move || {
             let (notify_tx, notify_rx) = std::sync::mpsc::channel();
-            let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-                if let Ok(evt) = res {
-                    let _ = notify_tx.send(evt);
-                }
-            }) {
-                Ok(w) => w,
-                Err(e) => {
-                    eprintln!("Theme watcher error: {:?}", e);
-                    return;
-                }
-            };
+            let mut watcher =
+                match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+                    if let Ok(evt) = res {
+                        let _ = notify_tx.send(evt);
+                    }
+                }) {
+                    Ok(w) => w,
+                    Err(e) => {
+                        eprintln!("Theme watcher error: {:?}", e);
+                        return;
+                    }
+                };
 
             if let Err(e) = watcher.watch(&watch_dir, RecursiveMode::Recursive) {
                 eprintln!("Failed to watch Omarchy theme dir: {:?}", e);
@@ -203,7 +222,10 @@ accent = "#999999"
         assert_eq!(get_str(&["bg", "background"], ""), "#111111");
         assert_eq!(get_str(&["dark_bg", "dark_background"], ""), "#222222");
         assert_eq!(get_str(&["darker_bg", "darker_background"], ""), "#333333");
-        assert_eq!(get_str(&["lighter_bg", "lighter_background"], ""), "#444444");
+        assert_eq!(
+            get_str(&["lighter_bg", "lighter_background"], ""),
+            "#444444"
+        );
         assert_eq!(get_str(&["fg", "foreground"], ""), "#555555");
         assert_eq!(get_str(&["dark_fg", "dark_foreground"], ""), "#666666");
         assert_eq!(get_str(&["light_fg", "light_foreground"], ""), "#777777");

@@ -1,5 +1,5 @@
-use std::path::Path;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ExifMetadata {
@@ -23,12 +23,11 @@ pub struct ExifMetadata {
 
 fn clean_str(s: &str) -> String {
     let trimmed = s.trim();
-    if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    if ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+        && trimmed.len() >= 2
     {
-        if trimmed.len() >= 2 {
-            return trimmed[1..trimmed.len() - 1].trim().to_string();
-        }
+        return trimmed[1..trimmed.len() - 1].trim().to_string();
     }
     trimmed.to_string()
 }

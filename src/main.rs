@@ -1,19 +1,19 @@
-mod scanner;
-mod theme;
-mod trash;
 mod editor;
 mod exif_inspector;
 mod ipc;
+mod scanner;
+mod theme;
+mod trash;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
+use editor::ImageEditor;
+use ipc::{run_ipc_server, AppState};
 use scanner::DirectoryScanner;
 use theme::ThemeManager;
 use trash::TrashManager;
-use editor::ImageEditor;
-use ipc::{run_ipc_server, AppState};
 
 fn get_socket_path(pid: u32) -> PathBuf {
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
@@ -40,7 +40,9 @@ fn resolve_ui_path() -> PathBuf {
     // b. ./ui/shell.qml (relative to current working dir)
     let cwd_ui = Path::new("./ui/shell.qml");
     if cwd_ui.exists() {
-        return cwd_ui.canonicalize().unwrap_or_else(|_| cwd_ui.to_path_buf());
+        return cwd_ui
+            .canonicalize()
+            .unwrap_or_else(|_| cwd_ui.to_path_buf());
     }
 
     let exe_dir = std::env::current_exe()
@@ -81,7 +83,9 @@ fn resolve_ui_path() -> PathBuf {
     // f. /usr/share/zii/ui/shell.qml
     let usr_share_ui = Path::new("/usr/share/zii/ui/shell.qml");
     if usr_share_ui.exists() {
-        return usr_share_ui.canonicalize().unwrap_or_else(|_| usr_share_ui.to_path_buf());
+        return usr_share_ui
+            .canonicalize()
+            .unwrap_or_else(|_| usr_share_ui.to_path_buf());
     }
 
     // g. compile-time development fallback
@@ -132,7 +136,8 @@ where
 }
 
 fn print_help() {
-    println!(r#"Zii 0.1.0 - Fast, minimalist Wayland photo viewer & editor for Omarchy
+    println!(
+        r#"Zii 0.1.0 - Fast, minimalist Wayland photo viewer & editor for Omarchy
 
 USAGE:
     zii [OPTIONS] [PATH]...
@@ -177,7 +182,8 @@ KEYBINDINGS (Edit Mode):
     w                   Save and overwrite original
     s                   Save copy dialog
     Esc                 Cancel tool / Exit Edit Mode
-"#);
+"#
+    );
 }
 
 #[tokio::main]

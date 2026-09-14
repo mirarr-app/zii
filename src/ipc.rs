@@ -1,15 +1,15 @@
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::net::{UnixListener, UnixStream};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, Mutex};
-use serde::{Deserialize, Serialize};
 
+use crate::editor::ImageEditor;
+use crate::exif_inspector::{extract_metadata, ExifMetadata};
 use crate::scanner::{DirectoryScanner, ImageEntry};
 use crate::theme::{OmarchyTheme, ThemeManager};
 use crate::trash::TrashManager;
-use crate::editor::ImageEditor;
-use crate::exif_inspector::{extract_metadata, ExifMetadata};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -212,7 +212,10 @@ pub async fn set_wallpaper(path: &Path) -> Result<String, String> {
         }
     }
 
-    Err("Could not set wallpaper: neither omarchy-theme-bg-set, swww, nor hyprpaper succeeded".to_string())
+    Err(
+        "Could not set wallpaper: neither omarchy-theme-bg-set, swww, nor hyprpaper succeeded"
+            .to_string(),
+    )
 }
 
 pub async fn run_ipc_server(
@@ -312,7 +315,11 @@ async fn handle_connection(
     // Outgoing broadcast forwarder
     let write_loop = async {
         while let Ok(msg) = b_rx.recv().await {
-            if writer.write_all(format!("{}\n", msg).as_bytes()).await.is_err() {
+            if writer
+                .write_all(format!("{}\n", msg).as_bytes())
+                .await
+                .is_err()
+            {
                 break;
             }
             let _ = writer.flush().await;
@@ -391,10 +398,18 @@ async fn process_request(
             }
 
             match direction.as_str() {
-                "next" => { st.scanner.next(); }
-                "prev" => { st.scanner.prev(); }
-                "first" => { st.scanner.first(); }
-                "last" => { st.scanner.last(); }
+                "next" => {
+                    st.scanner.next();
+                }
+                "prev" => {
+                    st.scanner.prev();
+                }
+                "first" => {
+                    st.scanner.first();
+                }
+                "last" => {
+                    st.scanner.last();
+                }
                 "goto" => {
                     if let Some(idx) = target {
                         st.scanner.go_to(idx);
@@ -445,38 +460,45 @@ async fn process_request(
                 }
             }
         }
-        ClientRequest::RestoreTrash => {
-            match st.trash.restore_last() {
-                Ok(Some(restored_path)) => {
-                    let filename = restored_path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                    let _ = st.scanner.rescan();
-                    if let Some(pos) = st.scanner.entries.iter().position(|e| e.path == restored_path) {
-                        st.scanner.current_index = pos;
-                    }
-                    send_event(ServerEvent::Toast {
-                        message: format!("Restored {}", filename),
-                        level: "success".to_string(),
-                    });
-                    send_event(ServerEvent::DirectoryState {
-                        index: st.scanner.current_index,
-                        total: st.scanner.entries.len(),
-                        current: st.scanner.current().cloned(),
-                    });
+        ClientRequest::RestoreTrash => match st.trash.restore_last() {
+            Ok(Some(restored_path)) => {
+                let filename = restored_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let _ = st.scanner.rescan();
+                if let Some(pos) = st
+                    .scanner
+                    .entries
+                    .iter()
+                    .position(|e| e.path == restored_path)
+                {
+                    st.scanner.current_index = pos;
                 }
-                Ok(None) => {
-                    send_event(ServerEvent::Toast {
-                        message: "Nothing to undo".to_string(),
-                        level: "info".to_string(),
-                    });
-                }
-                Err(e) => {
-                    send_event(ServerEvent::Toast {
-                        message: format!("Failed to restore: {}", e),
-                        level: "error".to_string(),
-                    });
-                }
+                send_event(ServerEvent::Toast {
+                    message: format!("Restored {}", filename),
+                    level: "success".to_string(),
+                });
+                send_event(ServerEvent::DirectoryState {
+                    index: st.scanner.current_index,
+                    total: st.scanner.entries.len(),
+                    current: st.scanner.current().cloned(),
+                });
             }
-        }
+            Ok(None) => {
+                send_event(ServerEvent::Toast {
+                    message: "Nothing to undo".to_string(),
+                    level: "info".to_string(),
+                });
+            }
+            Err(e) => {
+                send_event(ServerEvent::Toast {
+                    message: format!("Failed to restore: {}", e),
+                    level: "error".to_string(),
+                });
+            }
+        },
         ClientRequest::ClipboardCopy { path_only } => {
             if let Some(current) = st.scanner.current().cloned() {
                 match copy_to_clipboard(&current.path, path_only).await {
@@ -576,7 +598,12 @@ async fn process_request(
                 level: "info".to_string(),
             });
         }
-        ClientRequest::EditCrop { x, y, width, height } => {
+        ClientRequest::EditCrop {
+            x,
+            y,
+            width,
+            height,
+        } => {
             if st.edit_active {
                 match st.editor.crop(x, y, width, height) {
                     Ok(preview) => {
@@ -622,7 +649,10 @@ async fn process_request(
                 }
             }
         }
-        ClientRequest::EditFlip { horizontal, vertical } => {
+        ClientRequest::EditFlip {
+            horizontal,
+            vertical,
+        } => {
             if st.edit_active {
                 match st.editor.flip(horizontal, vertical) {
                     Ok(preview) => {
@@ -645,7 +675,11 @@ async fn process_request(
                 }
             }
         }
-        ClientRequest::EditAdjust { brightness, contrast, saturation } => {
+        ClientRequest::EditAdjust {
+            brightness,
+            contrast,
+            saturation,
+        } => {
             if st.edit_active {
                 match st.editor.adjust(brightness, contrast, saturation) {
                     Ok(preview) => {
@@ -737,16 +771,25 @@ async fn process_request(
                 }
             }
         }
-        ClientRequest::EditSave { overwrite, filename } => {
+        ClientRequest::EditSave {
+            overwrite,
+            filename,
+        } => {
             if st.edit_active {
                 st.editor.commit_adjustments();
                 let custom_path = filename.map(PathBuf::from);
                 match st.editor.save(overwrite, custom_path.as_deref()) {
                     Ok(saved_path) => {
-                        let fname = saved_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let fname = saved_path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
                         st.edit_active = false;
                         let _ = st.scanner.rescan();
-                        if let Some(pos) = st.scanner.entries.iter().position(|e| e.path == saved_path) {
+                        if let Some(pos) =
+                            st.scanner.entries.iter().position(|e| e.path == saved_path)
+                        {
                             st.scanner.current_index = pos;
                         }
 
@@ -812,14 +855,14 @@ mod tests {
         let json_wp = r#"{"type":"set_wallpaper"}"#;
         let req_wp: ClientRequest = serde_json::from_str(json_wp).unwrap();
         match req_wp {
-            ClientRequest::SetWallpaper => {},
+            ClientRequest::SetWallpaper => {}
             _ => panic!("Expected SetWallpaper"),
         }
 
         let json_exif = r#"{"type":"get_exif"}"#;
         let req_exif: ClientRequest = serde_json::from_str(json_exif).unwrap();
         match req_exif {
-            ClientRequest::GetExif => {},
+            ClientRequest::GetExif => {}
             _ => panic!("Expected GetExif"),
         }
     }
@@ -869,4 +912,3 @@ mod tests {
         assert!(res.is_err() || res.is_ok());
     }
 }
-

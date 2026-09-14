@@ -1,13 +1,13 @@
-use std::path::{Path, PathBuf};
 use anyhow::Context;
 use image::{imageops, DynamicImage, GenericImageView, ImageFormat};
+use std::path::{Path, PathBuf};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Adjustments {
-    pub brightness: i32,  // -100 to +100
-    pub contrast: f32,    // -100.0 to +100.0 (0.0 is neutral, positive increases, negative decreases)
-    pub saturation: i32,  // -100 to +100
+    pub brightness: i32, // -100 to +100
+    pub contrast: f32, // -100.0 to +100.0 (0.0 is neutral, positive increases, negative decreases)
+    pub saturation: i32, // -100 to +100
 }
 
 impl Default for Adjustments {
@@ -82,8 +82,8 @@ impl ImageEditor {
 
     pub fn open(&mut self, path: &Path) -> anyhow::Result<PathBuf> {
         self.original_path = path.to_path_buf();
-        let mut img = image::open(path)
-            .with_context(|| format!("Failed to open image at {:?}", path))?;
+        let mut img =
+            image::open(path).with_context(|| format!("Failed to open image at {:?}", path))?;
         if let Some(orientation) = read_exif_orientation(path) {
             img = apply_orientation(img, orientation);
         }
@@ -200,7 +200,12 @@ impl ImageEditor {
         self.generate_preview()
     }
 
-    pub fn adjust(&mut self, brightness: i32, contrast: f32, saturation: i32) -> anyhow::Result<PathBuf> {
+    pub fn adjust(
+        &mut self,
+        brightness: i32,
+        contrast: f32,
+        saturation: i32,
+    ) -> anyhow::Result<PathBuf> {
         if self.adjustment_base.is_none() {
             match &self.current_image {
                 Some(i) => self.adjustment_base = Some(i.clone()),
@@ -329,14 +334,16 @@ impl ImageEditor {
             img.write_with_encoder(encoder)
                 .with_context(|| format!("Failed to encode JPEG image to {:?}", target_path))?;
             use std::io::Write;
-            file.flush()
-                .with_context(|| format!("Failed to flush encoded JPEG image to {:?}", target_path))?;
+            file.flush().with_context(|| {
+                format!("Failed to flush encoded JPEG image to {:?}", target_path)
+            })?;
         } else {
             img.save_with_format(temp_file.path(), format)
                 .with_context(|| format!("Failed to encode image to {:?}", target_path))?;
         }
 
-        temp_file.persist(&target_path)
+        temp_file
+            .persist(&target_path)
             .with_context(|| format!("Failed to persist saved file to {:?}", target_path))?;
 
         Ok(target_path)
@@ -358,7 +365,9 @@ impl ImageEditor {
         };
 
         let _ = std::fs::create_dir_all(&self.cache_dir);
-        let preview_path = self.cache_dir.join(format!("preview_{}.png", self.revision));
+        let preview_path = self
+            .cache_dir
+            .join(format!("preview_{}.png", self.revision));
         img.save_with_format(&preview_path, ImageFormat::Png)?;
 
         // Delete previous revision preview files so cache does not accumulate images
@@ -367,7 +376,10 @@ impl ImageEditor {
             for entry in entries.flatten() {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
-                if name_str.starts_with("preview_") && name_str.ends_with(".png") && name_str != current_filename {
+                if name_str.starts_with("preview_")
+                    && name_str.ends_with(".png")
+                    && name_str != current_filename
+                {
                     let _ = std::fs::remove_file(entry.path());
                 }
             }
@@ -412,7 +424,13 @@ mod tests {
     #[test]
     fn test_editor_cleanup() {
         let mut editor = ImageEditor::new();
-        let unique_cache = std::env::temp_dir().join(format!("zii_test_cleanup_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let unique_cache = std::env::temp_dir().join(format!(
+            "zii_test_cleanup_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&unique_cache);
         editor.cache_dir = unique_cache.clone();
         assert!(unique_cache.exists());
@@ -424,7 +442,9 @@ mod tests {
     fn test_apply_orientation() {
         // Create 20x10 image with top-left pixel black (0,0) and bottom-right pixel white (19,9)
         let mut img = DynamicImage::new_rgba8(20, 10);
-        img.as_mut_rgba8().unwrap().put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
+        img.as_mut_rgba8()
+            .unwrap()
+            .put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
 
         // Orientation 1: unchanged
         let o1 = apply_orientation(img.clone(), 1);
@@ -473,7 +493,9 @@ mod tests {
         editor.cache_dir = tempfile::tempdir().unwrap().keep();
         // Create an image with a pure red pixel (255, 0, 0)
         let mut img = DynamicImage::new_rgb8(2, 2);
-        img.as_mut_rgb8().unwrap().put_pixel(0, 0, image::Rgb([255, 0, 0]));
+        img.as_mut_rgb8()
+            .unwrap()
+            .put_pixel(0, 0, image::Rgb([255, 0, 0]));
         editor.current_image = Some(img);
 
         // Desaturate completely: saturation = -100
@@ -488,7 +510,9 @@ mod tests {
         // Boost saturation: saturation = 50 on neutral base
         editor.adjustment_base = None; // reset base
         let mut img2 = DynamicImage::new_rgb8(2, 2);
-        img2.as_mut_rgb8().unwrap().put_pixel(0, 0, image::Rgb([200, 100, 50]));
+        img2.as_mut_rgb8()
+            .unwrap()
+            .put_pixel(0, 0, image::Rgb([200, 100, 50]));
         editor.current_image = Some(img2);
         editor.adjust(0, 0.0, 50).unwrap();
         let adjusted2 = editor.current_image.as_ref().unwrap();
@@ -572,4 +596,3 @@ mod tests {
         assert_eq!(entries[0].file_name(), "preview_3.png");
     }
 }
-

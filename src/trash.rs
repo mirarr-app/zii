@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use anyhow::Context;
+use std::path::{Path, PathBuf};
 
 pub struct TrashItem {
     pub original_path: PathBuf,
@@ -43,7 +43,9 @@ impl TrashManager {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let backup_path = self.backup_dir.join(format!("{}_{}", uuid_timestamp(), filename));
+        let backup_path = self
+            .backup_dir
+            .join(format!("{}_{}", uuid_timestamp(), filename));
 
         let _ = std::fs::copy(&canon, &backup_path);
 

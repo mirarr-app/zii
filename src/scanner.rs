@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use notify::Watcher;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageEntry {
@@ -167,24 +167,29 @@ impl DirectoryScanner {
         Ok(())
     }
 
-    pub fn start_watcher(watch_dir: PathBuf, tx: tokio::sync::mpsc::Sender<()>) -> anyhow::Result<()> {
+    pub fn start_watcher(
+        watch_dir: PathBuf,
+        tx: tokio::sync::mpsc::Sender<()>,
+    ) -> anyhow::Result<()> {
         if !watch_dir.exists() {
             return Ok(());
         }
 
         tokio::task::spawn_blocking(move || {
             let (notify_tx, notify_rx) = std::sync::mpsc::channel();
-            let mut watcher = match notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
-                if let Ok(evt) = res {
-                    use notify::event::EventKind;
-                    match evt.kind {
-                        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) => {
-                            let _ = notify_tx.send(());
+            let mut watcher = match notify::recommended_watcher(
+                move |res: Result<notify::Event, notify::Error>| {
+                    if let Ok(evt) = res {
+                        use notify::event::EventKind;
+                        match evt.kind {
+                            EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) => {
+                                let _ = notify_tx.send(());
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
-                }
-            }) {
+                },
+            ) {
                 Ok(w) => w,
                 Err(e) => {
                     eprintln!("Directory watcher error: {:?}", e);
@@ -350,7 +355,9 @@ mod natord {
                     let mut num_a: u64 = 0;
                     while let Some(d) = ca.peek() {
                         if d.is_ascii_digit() {
-                            num_a = num_a.saturating_mul(10).saturating_add(d.to_digit(10).unwrap() as u64);
+                            num_a = num_a
+                                .saturating_mul(10)
+                                .saturating_add(d.to_digit(10).unwrap() as u64);
                             ca.next();
                         } else {
                             break;
@@ -360,7 +367,9 @@ mod natord {
                     let mut num_b: u64 = 0;
                     while let Some(d) = cb.peek() {
                         if d.is_ascii_digit() {
-                            num_b = num_b.saturating_mul(10).saturating_add(d.to_digit(10).unwrap() as u64);
+                            num_b = num_b
+                                .saturating_mul(10)
+                                .saturating_add(d.to_digit(10).unwrap() as u64);
                             cb.next();
                         } else {
                             break;
