@@ -393,16 +393,13 @@ ShellRoot {
                 onApplyCrop: cropOverlay.apply()
                 onCancelCrop: cropOverlay.cancel()
                 onCropMove: (dx, dy) => {
-                    if (dx > 0) cropOverlay.moveRight(dx);
-                    else if (dx < 0) cropOverlay.moveLeft(-dx);
-                    if (dy > 0) cropOverlay.moveDown(dy);
-                    else if (dy < 0) cropOverlay.moveUp(-dy);
+                    cropOverlay.moveBox(dx, dy);
                 }
                 onCropResize: (dw, dh) => {
-                    if (dw > 0) cropOverlay.expandW(dw);
-                    else if (dw < 0) cropOverlay.shrinkW(-dw);
-                    if (dh > 0) cropOverlay.expandH(dh);
-                    else if (dh < 0) cropOverlay.shrinkH(-dh);
+                    cropOverlay.resizeBox(dw, dh);
+                }
+                onCropAdjustEdge: (edge, dir) => {
+                    cropOverlay.adjustEdge(edge, dir);
                 }
 
                 onRotateCW: {

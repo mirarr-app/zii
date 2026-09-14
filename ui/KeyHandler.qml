@@ -31,6 +31,7 @@ Item {
     signal cancelCrop()
     signal cropMove(real dx, real dy)
     signal cropResize(real dw, real dh)
+    signal cropAdjustEdge(string edge, int dir)
 
     signal rotateCW()
     signal rotateCCW()
@@ -115,21 +116,28 @@ Item {
                     event.accepted = true;
                     return;
                 }
-                var step = hasShift ? 20 : 10;
                 if (key === Qt.Key_Left) {
-                    if (hasShift) root.cropResize(-step, 0); else root.cropMove(-step, 0);
+                    if (hasCtrl && hasShift) root.cropAdjustEdge("left", -1);
+                    else if (hasShift) root.cropResize(-1, 0);
+                    else root.cropMove(-1, 0);
                     event.accepted = true; return;
                 }
                 if (key === Qt.Key_Right) {
-                    if (hasShift) root.cropResize(step, 0); else root.cropMove(step, 0);
+                    if (hasCtrl && hasShift) root.cropAdjustEdge("left", 1);
+                    else if (hasShift) root.cropResize(1, 0);
+                    else root.cropMove(1, 0);
                     event.accepted = true; return;
                 }
                 if (key === Qt.Key_Up) {
-                    if (hasShift) root.cropResize(0, -step); else root.cropMove(0, -step);
+                    if (hasCtrl && hasShift) root.cropAdjustEdge("top", -1);
+                    else if (hasShift) root.cropResize(0, -1);
+                    else root.cropMove(0, -1);
                     event.accepted = true; return;
                 }
                 if (key === Qt.Key_Down) {
-                    if (hasShift) root.cropResize(0, step); else root.cropMove(0, step);
+                    if (hasCtrl && hasShift) root.cropAdjustEdge("top", 1);
+                    else if (hasShift) root.cropResize(0, 1);
+                    else root.cropMove(0, 1);
                     event.accepted = true; return;
                 }
             }

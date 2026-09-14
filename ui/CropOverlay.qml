@@ -50,16 +50,58 @@ Item {
         cropY = Math.max(0, Math.min(imgNaturalHeight - cropH, cropY));
     }
 
-    // Keyboard controls for crop
-    function moveLeft(step) { cropX -= (step || 10); clampCrop(); }
-    function moveRight(step) { cropX += (step || 10); clampCrop(); }
-    function moveUp(step) { cropY -= (step || 10); clampCrop(); }
-    function moveDown(step) { cropY += (step || 10); clampCrop(); }
+    // Keyboard controls for crop - scaled by zoomFactor to ensure consistent screen motion
+    function moveBox(dirX, dirY) {
+        var step = Math.max(5, Math.round(20 / Math.max(0.001, root.zoomFactor)));
+        cropX += dirX * step;
+        cropY += dirY * step;
+        clampCrop();
+    }
 
-    function shrinkW(step) { cropW -= (step || 10); clampCrop(); }
-    function expandW(step) { cropW += (step || 10); clampCrop(); }
-    function shrinkH(step) { cropH -= (step || 10); clampCrop(); }
-    function expandH(step) { cropH += (step || 10); clampCrop(); }
+    function resizeBox(dirW, dirH) {
+        var step = Math.max(5, Math.round(25 / Math.max(0.001, root.zoomFactor)));
+        if (dirW > 0) cropW += step;
+        else if (dirW < 0) cropW = Math.max(20, cropW - step);
+        if (dirH > 0) cropH += step;
+        else if (dirH < 0) cropH = Math.max(20, cropH - step);
+        clampCrop();
+    }
+
+    function adjustEdge(edge, dir) {
+        var step = Math.max(5, Math.round(25 / Math.max(0.001, root.zoomFactor)));
+        if (edge === "left") {
+            if (dir < 0) {
+                var actualL = Math.min(cropX, step);
+                cropX -= actualL;
+                cropW += actualL;
+            } else {
+                var actualShrinkL = Math.min(cropW - 20, step);
+                cropX += actualShrinkL;
+                cropW -= actualShrinkL;
+            }
+        } else if (edge === "top") {
+            if (dir < 0) {
+                var actualT = Math.min(cropY, step);
+                cropY -= actualT;
+                cropH += actualT;
+            } else {
+                var actualShrinkT = Math.min(cropH - 20, step);
+                cropY += actualShrinkT;
+                cropH -= actualShrinkT;
+            }
+        }
+        clampCrop();
+    }
+
+    function moveLeft(step) { moveBox(-1, 0); }
+    function moveRight(step) { moveBox(1, 0); }
+    function moveUp(step) { moveBox(0, -1); }
+    function moveDown(step) { moveBox(0, 1); }
+
+    function shrinkW(step) { resizeBox(-1, 0); }
+    function expandW(step) { resizeBox(1, 0); }
+    function shrinkH(step) { resizeBox(0, -1); }
+    function expandH(step) { resizeBox(0, 1); }
 
     function apply() {
         clampCrop();
