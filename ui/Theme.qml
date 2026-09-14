@@ -33,17 +33,25 @@ QtObject {
     function apply(themeObj) {
         if (!themeObj) return;
         if (themeObj.name) root.name = themeObj.name;
-        if (themeObj.background) root.background = themeObj.background;
-        if (themeObj.dark_background) root.darkBackground = themeObj.dark_background;
-        if (themeObj.darker_background) root.darkerBackground = themeObj.darker_background;
-        if (themeObj.lighter_background) {
-            root.lighterBackground = themeObj.lighter_background;
-            root.surface = themeObj.lighter_background;
+        var bgVal = themeObj.bg || themeObj.background;
+        if (bgVal) root.background = bgVal;
+        var darkBgVal = themeObj.dark_bg || themeObj.dark_background;
+        if (darkBgVal) root.darkBackground = darkBgVal;
+        var darkerBgVal = themeObj.darker_bg || themeObj.darker_background;
+        if (darkerBgVal) root.darkerBackground = darkerBgVal;
+        var lighterBgVal = themeObj.lighter_bg || themeObj.lighter_background;
+        if (lighterBgVal) {
+            root.lighterBackground = lighterBgVal;
+            root.surface = lighterBgVal;
         }
-        if (themeObj.foreground) root.foreground = themeObj.foreground;
-        if (themeObj.dark_foreground) root.darkForeground = themeObj.dark_foreground;
-        if (themeObj.light_foreground) root.lightForeground = themeObj.light_foreground;
-        if (themeObj.bright_foreground) root.brightForeground = themeObj.bright_foreground;
+        var fgVal = themeObj.fg || themeObj.foreground;
+        if (fgVal) root.foreground = fgVal;
+        var darkFgVal = themeObj.dark_fg || themeObj.dark_foreground;
+        if (darkFgVal) root.darkForeground = darkFgVal;
+        var lightFgVal = themeObj.light_fg || themeObj.light_foreground;
+        if (lightFgVal) root.lightForeground = lightFgVal;
+        var brightFgVal = themeObj.bright_fg || themeObj.bright_foreground;
+        if (brightFgVal) root.brightForeground = brightFgVal;
         if (themeObj.accent) root.accent = themeObj.accent;
         if (themeObj.selection) root.selection = themeObj.selection;
         if (themeObj.muted) root.muted = themeObj.muted;

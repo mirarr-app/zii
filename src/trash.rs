@@ -13,11 +13,20 @@ pub struct TrashManager {
 
 impl TrashManager {
     pub fn new() -> Self {
-        let backup_dir = std::env::temp_dir().join("zii_trash_backup");
+        let pid = std::process::id();
+        let backup_dir = std::env::temp_dir().join(format!("zii_trash_backup_{}", pid));
         let _ = std::fs::create_dir_all(&backup_dir);
         Self {
             history: Vec::new(),
             backup_dir,
+        }
+    }
+
+    pub fn cleanup(&self) {
+        let _ = std::fs::remove_dir_all(&self.backup_dir);
+        let default_backup = std::env::temp_dir().join("zii_trash_backup");
+        if default_backup.exists() && default_backup != self.backup_dir {
+            let _ = std::fs::remove_dir_all(&default_backup);
         }
     }
 
@@ -78,4 +87,24 @@ fn uuid_timestamp() -> u128 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis()
+}
+
+impl Drop for TrashManager {
+    fn drop(&mut self) {
+        self.cleanup();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trash_cleanup() {
+        let trash = TrashManager::new();
+        let backup = trash.backup_dir.clone();
+        assert!(backup.exists());
+        trash.cleanup();
+        assert!(!backup.exists());
+    }
 }

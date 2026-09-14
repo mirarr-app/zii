@@ -33,7 +33,8 @@ pub struct ImageEditor {
 
 impl ImageEditor {
     pub fn new() -> Self {
-        let cache_dir = std::env::temp_dir().join("zii_preview_cache");
+        let pid = std::process::id();
+        let cache_dir = std::env::temp_dir().join(format!("zii_preview_cache_{}", pid));
         let _ = std::fs::create_dir_all(&cache_dir);
         Self {
             original_path: PathBuf::new(),
@@ -44,6 +45,14 @@ impl ImageEditor {
             current_image: None,
             cache_dir,
             revision: 0,
+        }
+    }
+
+    pub fn cleanup(&self) {
+        let _ = std::fs::remove_dir_all(&self.cache_dir);
+        let default_cache = std::env::temp_dir().join("zii_preview_cache");
+        if default_cache.exists() && default_cache != self.cache_dir {
+            let _ = std::fs::remove_dir_all(&default_cache);
         }
     }
 
@@ -286,5 +295,25 @@ impl ImageEditor {
             }
             counter += 1;
         }
+    }
+}
+
+impl Drop for ImageEditor {
+    fn drop(&mut self) {
+        self.cleanup();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_editor_cleanup() {
+        let editor = ImageEditor::new();
+        let cache = editor.cache_dir.clone();
+        assert!(cache.exists());
+        editor.cleanup();
+        assert!(!cache.exists());
     }
 }

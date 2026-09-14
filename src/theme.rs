@@ -50,6 +50,20 @@ impl Default for OmarchyTheme {
     }
 }
 
+fn omarchy_current_dir() -> PathBuf {
+    if let Ok(state_home) = std::env::var("XDG_STATE_HOME") {
+        if !state_home.is_empty() {
+            return PathBuf::from(state_home).join("omarchy/current");
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    if !home.is_empty() {
+        PathBuf::from(home).join(".local/state/omarchy/current")
+    } else {
+        PathBuf::from(".").join(".local/state/omarchy/current")
+    }
+}
+
 pub struct ThemeManager {
     pub current_theme: OmarchyTheme,
     state_theme_dir: PathBuf,
@@ -57,9 +71,7 @@ pub struct ThemeManager {
 
 impl ThemeManager {
     pub fn new() -> Self {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/parsa".to_string());
-        let state_theme_dir = PathBuf::from(home)
-            .join(".local/state/omarchy/current/theme");
+        let state_theme_dir = omarchy_current_dir().join("theme");
 
         let mut mgr = Self {
             current_theme: OmarchyTheme::default(),
@@ -84,40 +96,41 @@ impl ThemeManager {
 
         if let Ok(content) = std::fs::read_to_string(&colors_path) {
             if let Ok(val) = content.parse::<toml::Value>() {
-                let get_str = |key: &str, def: &str| -> String {
-                    val.get(key)
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(def)
-                        .to_string()
+                let get_str = |keys: &[&str], def: &str| -> String {
+                    for &k in keys {
+                        if let Some(v) = val.get(k).and_then(|v| v.as_str()) {
+                            return v.to_string();
+                        }
+                    }
+                    def.to_string()
                 };
 
                 self.current_theme = OmarchyTheme {
                     name: theme_name,
-                    background: get_str("background", &self.current_theme.background),
-                    dark_background: get_str("dark_background", &self.current_theme.dark_background),
-                    darker_background: get_str("darker_background", &self.current_theme.darker_background),
-                    lighter_background: get_str("lighter_background", &self.current_theme.lighter_background),
-                    foreground: get_str("foreground", &self.current_theme.foreground),
-                    dark_foreground: get_str("dark_foreground", &self.current_theme.dark_foreground),
-                    light_foreground: get_str("light_foreground", &self.current_theme.light_foreground),
-                    bright_foreground: get_str("bright_foreground", &self.current_theme.bright_foreground),
-                    accent: get_str("accent", &self.current_theme.accent),
-                    selection: get_str("selection", &self.current_theme.selection),
-                    muted: get_str("muted", &self.current_theme.muted),
-                    red: get_str("red", &self.current_theme.red),
-                    yellow: get_str("yellow", &self.current_theme.yellow),
-                    green: get_str("green", &self.current_theme.green),
-                    cyan: get_str("cyan", &self.current_theme.cyan),
-                    blue: get_str("blue", &self.current_theme.blue),
-                    magenta: get_str("magenta", &self.current_theme.magenta),
+                    background: get_str(&["bg", "background"], &self.current_theme.background),
+                    dark_background: get_str(&["dark_bg", "dark_background"], &self.current_theme.dark_background),
+                    darker_background: get_str(&["darker_bg", "darker_background"], &self.current_theme.darker_background),
+                    lighter_background: get_str(&["lighter_bg", "lighter_background"], &self.current_theme.lighter_background),
+                    foreground: get_str(&["fg", "foreground"], &self.current_theme.foreground),
+                    dark_foreground: get_str(&["dark_fg", "dark_foreground"], &self.current_theme.dark_foreground),
+                    light_foreground: get_str(&["light_fg", "light_foreground"], &self.current_theme.light_foreground),
+                    bright_foreground: get_str(&["bright_fg", "bright_foreground"], &self.current_theme.bright_foreground),
+                    accent: get_str(&["accent"], &self.current_theme.accent),
+                    selection: get_str(&["selection"], &self.current_theme.selection),
+                    muted: get_str(&["muted"], &self.current_theme.muted),
+                    red: get_str(&["red"], &self.current_theme.red),
+                    yellow: get_str(&["yellow"], &self.current_theme.yellow),
+                    green: get_str(&["green"], &self.current_theme.green),
+                    cyan: get_str(&["cyan"], &self.current_theme.cyan),
+                    blue: get_str(&["blue"], &self.current_theme.blue),
+                    magenta: get_str(&["magenta", "purple"], &self.current_theme.magenta),
                 };
             }
         }
     }
 
     pub fn start_watcher(tx: mpsc::Sender<OmarchyTheme>) -> anyhow::Result<()> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/parsa".to_string());
-        let watch_dir = PathBuf::from(home).join(".local/state/omarchy/current");
+        let watch_dir = omarchy_current_dir();
 
         if !watch_dir.exists() {
             return Ok(());
@@ -158,5 +171,43 @@ impl ThemeManager {
         });
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_theme_key_resolution() {
+        let toml_str = r##"
+bg = "#111111"
+dark_bg = "#222222"
+darker_bg = "#333333"
+lighter_bg = "#444444"
+fg = "#555555"
+dark_fg = "#666666"
+light_fg = "#777777"
+bright_fg = "#888888"
+accent = "#999999"
+"##;
+        let val: toml::Value = toml_str.parse().unwrap();
+        let get_str = |keys: &[&str], def: &str| -> String {
+            for &k in keys {
+                if let Some(v) = val.get(k).and_then(|v| v.as_str()) {
+                    return v.to_string();
+                }
+            }
+            def.to_string()
+        };
+
+        assert_eq!(get_str(&["bg", "background"], ""), "#111111");
+        assert_eq!(get_str(&["dark_bg", "dark_background"], ""), "#222222");
+        assert_eq!(get_str(&["darker_bg", "darker_background"], ""), "#333333");
+        assert_eq!(get_str(&["lighter_bg", "lighter_background"], ""), "#444444");
+        assert_eq!(get_str(&["fg", "foreground"], ""), "#555555");
+        assert_eq!(get_str(&["dark_fg", "dark_foreground"], ""), "#666666");
+        assert_eq!(get_str(&["light_fg", "light_foreground"], ""), "#777777");
+        assert_eq!(get_str(&["bright_fg", "bright_foreground"], ""), "#888888");
     }
 }

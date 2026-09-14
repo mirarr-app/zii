@@ -12,7 +12,7 @@ ShellRoot {
     // Direct watcher on Omarchy colors.toml for real-time live theme reload
     FileView {
         id: colorsWatcher
-        path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/omarchy/current/theme/colors.toml"
         watchChanges: true
         printErrors: false
         onLoaded: {
