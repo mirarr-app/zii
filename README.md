@@ -131,11 +131,26 @@ cargo build --release
 ./target/release/zii ~/Pictures/Wallpapers/
 ```
 
-### Install into User PATH
+### Installation
+
+You can install Zii system-wide or to your user profile using the included `install.sh` script:
 
 ```bash
-# Symlink or copy binary
-mkdir -p ~/.local/bin ~/.local/share/applications
-ln -sf $(pwd)/target/release/zii ~/.local/bin/zii
-cp zii.desktop ~/.local/share/applications/
+# Build release binary
+cargo build --release
+
+# Install for current user (~/.local/bin, ~/.local/share/zii, ~/.local/share/applications)
+./install.sh --user
+
+# Or install system-wide (requires sudo)
+sudo ./install.sh
 ```
+
+---
+
+## Releases & CI/CD
+
+Automated builds and releases are managed via GitHub Actions:
+- **Releases (`.github/workflows/release.yml`)**: Triggered when pushing stable version tags (e.g. `git tag v0.1.0 && git push --tags`). Builds the release package, runs test suites, creates tarballs (`zii-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz`) with SHA256 checksums, and publishes full GitHub Releases.
+- **Pre-releases (`.github/workflows/prerelease.yml`)**: Triggered when pushing pre-release tags (e.g. `v0.1.0-beta.1`, `v0.1.0-rc1`) or dispatched manually. Publishes pre-releases marked with `prerelease: true`.
+
