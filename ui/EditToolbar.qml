@@ -29,9 +29,9 @@ Rectangle {
     Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
 
     implicitHeight: 46
-    implicitWidth: buttonRow.implicitWidth + 24
+    width: Math.min(parent ? (parent.width - 24) : (buttonRow.implicitWidth + 28), buttonRow.implicitWidth + 28)
     radius: 23
-    color: Qt.rgba(theme.darkerBackground.r, theme.darkerBackground.g, theme.darkerBackground.b, 0.9)
+    color: Qt.rgba(theme.darkerBackground.r, theme.darkerBackground.g, theme.darkerBackground.b, 0.92)
     border.color: Qt.rgba(theme.muted.r, theme.muted.g, theme.muted.b, 0.4)
     border.width: 1
 
@@ -44,7 +44,7 @@ Rectangle {
         signal clicked()
 
         height: 32
-        width: btnRow.implicitWidth + 16
+        width: btnRow.implicitWidth + 14
         radius: 16
         color: toggled ? theme.accent : (mouseA.containsMouse ? theme.surface : "transparent")
         border.color: toggled ? theme.accent : (mouseA.containsMouse ? theme.muted : "transparent")
@@ -54,24 +54,24 @@ Rectangle {
         Row {
             id: btnRow
             anchors.centerIn: parent
-            spacing: 6
+            spacing: 5
 
             Text {
                 text: btn.label
                 color: btn.toggled ? theme.darkerBackground : theme.brightForeground
                 font.family: theme.fontFamily
-                font.pixelSize: 12
+                font.pixelSize: 11
                 font.bold: true
                 anchors.verticalCenter: parent.verticalCenter
             }
 
             Rectangle {
                 height: 16
-                width: scText.implicitWidth + 8
+                width: scText.implicitWidth + 6
                 radius: 4
                 color: btn.toggled ? Qt.rgba(0, 0, 0, 0.2) : Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, 0.8)
                 anchors.verticalCenter: parent.verticalCenter
-                visible: btn.shortcut.length > 0
+                visible: btn.shortcut.length > 0 && root.width > 500
 
                 Text {
                     id: scText
@@ -95,10 +95,35 @@ Rectangle {
         }
     }
 
-    Row {
-        id: buttonRow
-        anchors.centerIn: parent
-        spacing: 6
+    Flickable {
+        id: flickable
+        anchors.fill: parent
+        anchors.leftMargin: 12
+        anchors.rightMargin: 12
+        clip: true
+        contentWidth: buttonRow.implicitWidth
+        contentHeight: height
+        flickableDirection: Flickable.HorizontalFlick
+        boundsBehavior: Flickable.StopAtBounds
+
+        MouseArea {
+            anchors.fill: parent
+            propagateComposedEvents: true
+            onWheel: wheel => {
+                var dx = wheel.angleDelta.y;
+                flickable.contentX = Math.max(0, Math.min(flickable.contentWidth - flickable.width, flickable.contentX - dx));
+                wheel.accepted = true;
+            }
+        }
+
+        Item {
+            width: Math.max(flickable.width, buttonRow.implicitWidth)
+            height: flickable.height
+
+            Row {
+                id: buttonRow
+                anchors.centerIn: parent
+                spacing: root.width < 750 ? 4 : 6
 
         ToolBtn {
             label: "Crop"
@@ -186,4 +211,6 @@ Rectangle {
             onClicked: root.triggerExit()
         }
     }
+}
+}
 }
