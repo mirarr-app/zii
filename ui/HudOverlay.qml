@@ -16,9 +16,9 @@ Rectangle {
     property bool userActive: true
 
     implicitHeight: 38
-    implicitWidth: contentRow.implicitWidth + 32
+    width: Math.min(parent ? (parent.width - 24) : (contentRow.implicitWidth + 32), contentRow.implicitWidth + 32)
     radius: 19
-    color: Qt.rgba(theme.darkerBackground.r, theme.darkerBackground.g, theme.darkerBackground.b, 0.82)
+    color: Qt.rgba(theme.darkerBackground.r, theme.darkerBackground.g, theme.darkerBackground.b, 0.88)
     border.color: Qt.rgba(theme.muted.r, theme.muted.g, theme.muted.b, 0.35)
     border.width: 1
 
@@ -55,7 +55,7 @@ Rectangle {
     Row {
         id: contentRow
         anchors.centerIn: parent
-        spacing: 14
+        spacing: root.width < 550 ? 8 : 12
 
         // Mode badge
         Rectangle {
@@ -80,8 +80,9 @@ Rectangle {
             }
         }
 
-        // Filename
+        // Filename with dynamic width and middle eliding
         Text {
+            id: filenameText
             anchors.verticalCenter: parent.verticalCenter
             text: root.filename || "No image"
             color: theme.brightForeground
@@ -90,6 +91,7 @@ Rectangle {
             font.bold: true
             elide: Text.ElideMiddle
             maximumLineCount: 1
+            width: Math.min(implicitWidth, Math.max(60, root.width - (modeBadge.width + (dimText.visible ? dimText.implicitWidth + 14 : 0) + (sizeText.visible ? sizeText.implicitWidth + 14 : 0) + zoomText.implicitWidth + (countBadge.visible ? countBadge.width + 14 : 0) + 90)))
         }
 
         // Separator dot
@@ -99,26 +101,29 @@ Rectangle {
             radius: 1.5
             anchors.verticalCenter: parent.verticalCenter
             color: theme.muted
+            visible: dimText.visible
         }
 
         // Dimensions
         Text {
+            id: dimText
             anchors.verticalCenter: parent.verticalCenter
             text: (root.imgWidth > 0 && root.imgHeight > 0) ? (root.imgWidth + " × " + root.imgHeight) : ""
             color: theme.lightForeground
             font.family: theme.fontFamily
             font.pixelSize: theme.baseFontSize - 1
-            visible: text.length > 0
+            visible: text.length > 0 && root.width > 550
         }
 
         // File size
         Text {
+            id: sizeText
             anchors.verticalCenter: parent.verticalCenter
             text: formatFileSize(root.fileSize)
             color: theme.darkForeground
             font.family: theme.fontFamily
             font.pixelSize: theme.baseFontSize - 1
-            visible: text.length > 0
+            visible: text.length > 0 && root.width > 620
         }
 
         // Separator dot
@@ -133,6 +138,7 @@ Rectangle {
 
         // Zoom percentage
         Text {
+            id: zoomText
             anchors.verticalCenter: parent.verticalCenter
             text: Math.round(root.zoomFactor * 100) + "%"
             color: theme.accent
@@ -143,12 +149,13 @@ Rectangle {
 
         // Index / Count badge
         Rectangle {
+            id: countBadge
             height: 22
             width: countText.implicitWidth + 14
             radius: 11
             anchors.verticalCenter: parent.verticalCenter
             color: Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, 0.6)
-            visible: root.totalCount > 0
+            visible: root.totalCount > 0 && root.width > 420
 
             Text {
                 id: countText
