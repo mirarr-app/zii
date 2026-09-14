@@ -36,19 +36,32 @@ Item {
     }
 
     function fitScale() {
-        if (imgNaturalWidth <= 0 || imgNaturalHeight <= 0 || width <= 0 || height <= 0) {
+        var nw = imgNaturalWidth > 0 ? imgNaturalWidth : (mainImage.sourceSize.width > 0 ? mainImage.sourceSize.width : 0);
+        var nh = imgNaturalHeight > 0 ? imgNaturalHeight : (mainImage.sourceSize.height > 0 ? mainImage.sourceSize.height : 0);
+
+        if (nw <= 0 || nh <= 0 || width <= 0 || height <= 0) {
             return 1.0;
         }
-        var scaleX = width / imgNaturalWidth;
-        var scaleY = height / imgNaturalHeight;
+        var scaleX = width / nw;
+        var scaleY = height / nh;
         return Math.min(scaleX, scaleY, 1.0);
     }
 
     function resetView() {
-        var fit = fitScale();
+        var nw = imgNaturalWidth > 0 ? imgNaturalWidth : (mainImage.sourceSize.width > 0 ? mainImage.sourceSize.width : 0);
+        var nh = imgNaturalHeight > 0 ? imgNaturalHeight : (mainImage.sourceSize.height > 0 ? mainImage.sourceSize.height : 0);
+
+        if (nw <= 0 || nh <= 0 || width <= 0 || height <= 0) {
+            zoomFactor = 1.0;
+            panX = 0;
+            panY = 0;
+            return;
+        }
+
+        var fit = Math.min(width / nw, height / nh, 1.0);
         zoomFactor = fit;
-        panX = (width - imgNaturalWidth * fit) / 2;
-        panY = (height - imgNaturalHeight * fit) / 2;
+        panX = Math.round((width - nw * fit) / 2);
+        panY = Math.round((height - nh * fit) / 2);
     }
 
     function setZoom100() {
@@ -95,13 +108,13 @@ Item {
         id: transformContainer
         x: root.panX
         y: root.panY
-        width: root.imgNaturalWidth * root.zoomFactor
-        height: root.imgNaturalHeight * root.zoomFactor
+        width: Math.max(1, (root.imgNaturalWidth > 0 ? root.imgNaturalWidth : mainImage.sourceSize.width) * root.zoomFactor)
+        height: Math.max(1, (root.imgNaturalHeight > 0 ? root.imgNaturalHeight : mainImage.sourceSize.height) * root.zoomFactor)
 
         Image {
             id: mainImage
             anchors.fill: parent
-            source: root.source ? ("file://" + root.source) : ""
+            source: root.source ? (root.source.indexOf("file://") === 0 ? root.source : ("file://" + root.source)) : ""
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: false
@@ -113,9 +126,7 @@ Item {
                     if (sourceSize.width > 0) {
                         root.imgNaturalWidth = sourceSize.width;
                         root.imgNaturalHeight = sourceSize.height;
-                        if (!root.userInteracted) {
-                            root.resetView();
-                        }
+                        root.resetView();
                     }
                 }
             }

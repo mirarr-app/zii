@@ -35,6 +35,7 @@ ShellRoot {
     Socket {
         id: socket
         path: Quickshell.env("ZII_SOCKET") || "/tmp/zii.sock"
+        connected: true
 
         parser: SplitParser {
             splitMarker: "\n"
@@ -56,6 +57,7 @@ ShellRoot {
             }
         }
         Component.onCompleted: {
+            connected = true;
             if (connected) {
                 root.sendIpc({ type: "ready" });
             }
@@ -68,7 +70,9 @@ ShellRoot {
         repeat: true
         running: !root.currentEntry
         onTriggered: {
-            if (socket.connected) {
+            if (!socket.connected) {
+                socket.connected = true;
+            } else {
                 root.sendIpc({ type: "ready" });
             }
         }
