@@ -4,6 +4,33 @@
 
 ---
 
+## Installation & Updating (Omarchy)
+
+### 1. Latest Stable Release (Prebuilt Binary)
+Install the latest stable release to `~/.local/bin` and `~/.local/share` (running this command again automatically updates to the newest release):
+```bash
+curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | bash
+```
+
+### 2. Latest Pre-release (Bleeding Edge Binary)
+Install or update to the latest pre-release build:
+```bash
+curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | bash -s -- --prerelease
+```
+
+### 3. Build & Install from Source
+#### Prerequisites for building from source on Omarchy:
+Ensure the Rust toolchain, Git, and Quickshell are installed:
+```bash
+sudo pacman -S --needed rust git quickshell
+```
+Then run the one-liner source installer (re-running it pulls the latest commit, rebuilds, and updates your installation):
+```bash
+curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | bash -s -- --source
+```
+
+---
+
 ## Features
 
 - **Live Omarchy Theming**: Automatically syncs with `~/.local/state/omarchy/current/theme/colors.toml` in real time with zero restart required, supporting both canonical Quattro semantic roles and legacy theme keys.
@@ -150,4 +177,6 @@ sudo ./install.sh
 
 ## Releases & CI/CD
 
-Automated builds and releases are managed via GitHub Actions
+Automated builds and releases are managed via GitHub Actions:
+- **Releases (`.github/workflows/release.yml`)**: Triggered when pushing stable version tags (e.g. `git tag v0.1.0 && git push --tags`). Builds the release package, runs test suites, creates tarballs (`zii-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz`) with SHA256 checksums, and publishes full GitHub Releases.
+- **Pre-releases (`.github/workflows/prerelease.yml`)**: Triggered when pushing pre-release tags (e.g. `v0.1.0-beta.1`, `v0.1.0-rc1`) or dispatched manually. Publishes pre-releases marked with `prerelease: true`.

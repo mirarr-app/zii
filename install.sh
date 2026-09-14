@@ -1,106 +1,279 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PREFIX="${PREFIX:-/usr/local}"
-USE_USER=false
+# ==============================================================================
+# Zii (字) — Modern Wayland Photo Viewer & Editor for Omarchy Linux
+# Installer & Updater Script
+# Repository: https://github.com/mirarr-app/zii
+# ==============================================================================
+
+REPO="mirarr-app/zii"
+MODE="local"       # local, release, prerelease, source
+USE_USER=true
+PREFIX="$HOME/.local"
+
+# Detect if piped from curl or run directly outside of a repo/archive
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+if [ -z "$SCRIPT_DIR" ] || [ ! -f "$SCRIPT_DIR/zii.desktop" ]; then
+    MODE="release"
+fi
 
 for arg in "$@"; do
     case "$arg" in
+        --source)
+            MODE="source"
+            ;;
+        --release)
+            MODE="release"
+            ;;
+        --prerelease|--pre-release|--pre)
+            MODE="prerelease"
+            ;;
+        --system)
+            USE_USER=false
+            PREFIX="/usr/local"
+            ;;
         --user)
             USE_USER=true
+            PREFIX="$HOME/.local"
             ;;
         --prefix=*)
             PREFIX="${arg#*=}"
             ;;
         -h|--help)
+            echo "Zii (字) Installer & Updater"
+            echo ""
             echo "Usage: ./install.sh [OPTIONS]"
+            echo "   or: curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | bash -s -- [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --user         Install to ~/.local (no sudo required)"
-            echo "  --prefix=DIR   Install to custom prefix [default: /usr/local]"
-            echo "  -h, --help     Show this help message"
+            echo "  --release       Download and install the latest stable binary release [default over curl]"
+            echo "  --prerelease    Download and install the latest pre-release binary"
+            echo "  --source        Build and install directly from latest source on GitHub"
+            echo "  --user          Install to ~/.local without root privileges [default]"
+            echo "  --system        Install system-wide to /usr/local (requires sudo)"
+            echo "  --prefix=DIR    Install to custom destination prefix"
+            echo "  -h, --help      Show this help message"
             exit 0
             ;;
     esac
 done
 
-if [ "$USE_USER" = true ]; then
-    PREFIX="$HOME/.local"
+if [ "$USE_USER" = false ] && [ "$PREFIX" = "$HOME/.local" ]; then
+    PREFIX="/usr/local"
 fi
 
-BIN_DIR="$PREFIX/bin"
-SHARE_DIR="$PREFIX/share/zii"
-APPS_DIR="$PREFIX/share/applications"
-
-echo "==> Installing Zii into $PREFIX..."
-mkdir -p "$BIN_DIR" "$SHARE_DIR" "$APPS_DIR"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Find binary (current dir, target/release, or bin)
-if [ -f "$SCRIPT_DIR/zii" ]; then
-    BIN_SRC="$SCRIPT_DIR/zii"
-elif [ -f "$SCRIPT_DIR/target/release/zii" ]; then
-    BIN_SRC="$SCRIPT_DIR/target/release/zii"
-elif [ -f "$SCRIPT_DIR/bin/zii" ]; then
-    BIN_SRC="$SCRIPT_DIR/bin/zii"
-else
-    echo "Error: zii binary not found. Run 'cargo build --release' first." >&2
-    exit 1
-fi
-
-install -m 755 "$BIN_SRC" "$BIN_DIR/zii"
-echo "  Installed binary -> $BIN_DIR/zii"
-
-# Install UI files
-if [ -d "$SCRIPT_DIR/ui" ]; then
-    rm -rf "$SHARE_DIR/ui"
-    cp -r "$SCRIPT_DIR/ui" "$SHARE_DIR/ui"
-    echo "  Installed UI -> $SHARE_DIR/ui"
-fi
-
-# Install desktop entry
-if [ -f "$SCRIPT_DIR/zii.desktop" ]; then
-    install -m 644 "$SCRIPT_DIR/zii.desktop" "$APPS_DIR/zii.desktop"
-    echo "  Installed desktop entry -> $APPS_DIR/zii.desktop"
-    if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "$APPS_DIR" 2>/dev/null || true
+# ------------------------------------------------------------------------------
+# Dependency Checker
+# ------------------------------------------------------------------------------
+check_runtime_deps() {
+    if ! command -v quickshell >/dev/null 2>&1; then
+        echo "==> Warning: 'quickshell' is not installed or not in PATH."
+        echo "    Zii requires Quickshell for its Wayland UI."
+        echo "    On Omarchy / Arch Linux, install it with:"
+        echo "        sudo pacman -S quickshell"
+        echo ""
     fi
-fi
+}
 
-# Install icons
-ICONS_DIR="$PREFIX/share/icons/hicolor"
-PIXMAPS_DIR="$PREFIX/share/pixmaps"
-mkdir -p "$PIXMAPS_DIR"
+check_build_deps() {
+    local missing=()
+    if ! command -v cargo >/dev/null 2>&1; then missing+=("rust"); fi
+    if ! command -v git >/dev/null 2>&1; then missing+=("git"); fi
+    if ! command -v quickshell >/dev/null 2>&1; then missing+=("quickshell"); fi
 
-if [ -f "$SCRIPT_DIR/assets/zii.svg" ]; then
-    mkdir -p "$ICONS_DIR/scalable/apps"
-    install -m 644 "$SCRIPT_DIR/assets/zii.svg" "$ICONS_DIR/scalable/apps/zii.svg"
-    install -m 644 "$SCRIPT_DIR/assets/zii.svg" "$PIXMAPS_DIR/zii.svg"
-    echo "  Installed scalable icon -> $ICONS_DIR/scalable/apps/zii.svg"
-fi
-
-for sz in 32 48 64 128 256 512; do
-    PNG_SRC=""
-    if [ "$sz" = "512" ] && [ -f "$SCRIPT_DIR/assets/zii.png" ]; then
-        PNG_SRC="$SCRIPT_DIR/assets/zii.png"
-    elif [ -f "$SCRIPT_DIR/assets/zii-${sz}.png" ]; then
-        PNG_SRC="$SCRIPT_DIR/assets/zii-${sz}.png"
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "==> Error: Missing build dependencies to compile Zii from source: ${missing[*]}"
+        echo "    Install them on Omarchy / Arch Linux via:"
+        echo "        sudo pacman -S --needed ${missing[*]}"
+        exit 1
     fi
-    if [ -n "$PNG_SRC" ]; then
-        mkdir -p "$ICONS_DIR/${sz}x${sz}/apps"
-        install -m 644 "$PNG_SRC" "$ICONS_DIR/${sz}x${sz}/apps/zii.png"
+}
+
+# ------------------------------------------------------------------------------
+# Core File Installer
+# ------------------------------------------------------------------------------
+install_files() {
+    local src_dir="$1"
+    local bin_dir="$PREFIX/bin"
+    local share_dir="$PREFIX/share/zii"
+    local apps_dir="$PREFIX/share/applications"
+    local icons_dir="$PREFIX/share/icons/hicolor"
+    local pixmaps_dir="$PREFIX/share/pixmaps"
+
+    echo "==> Installing Zii into $PREFIX..."
+    mkdir -p "$bin_dir" "$share_dir" "$apps_dir" "$pixmaps_dir"
+
+    # 1. Binary
+    local bin_src=""
+    if [ -f "$src_dir/zii" ]; then
+        bin_src="$src_dir/zii"
+    elif [ -f "$src_dir/target/release/zii" ]; then
+        bin_src="$src_dir/target/release/zii"
+    elif [ -f "$src_dir/bin/zii" ]; then
+        bin_src="$src_dir/bin/zii"
+    else
+        echo "Error: zii binary not found in $src_dir." >&2
+        exit 1
     fi
-done
 
-if [ -f "$SCRIPT_DIR/assets/zii.png" ]; then
-    install -m 644 "$SCRIPT_DIR/assets/zii.png" "$PIXMAPS_DIR/zii.png"
-    echo "  Installed pixmap -> $PIXMAPS_DIR/zii.png"
-fi
+    install -m 755 "$bin_src" "$bin_dir/zii"
+    echo "  -> Installed binary: $bin_dir/zii"
 
-if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-    gtk-update-icon-cache -f -t "$ICONS_DIR" 2>/dev/null || true
-fi
+    # 2. UI files
+    if [ -d "$src_dir/ui" ]; then
+        rm -rf "$share_dir/ui"
+        cp -r "$src_dir/ui" "$share_dir/ui"
+        echo "  -> Installed UI assets: $share_dir/ui"
+    fi
 
-echo "==> Done! Zii is installed."
-echo "    Run 'zii' in terminal or launch from your app menu."
+    # 3. Desktop entry
+    if [ -f "$src_dir/zii.desktop" ]; then
+        install -m 644 "$src_dir/zii.desktop" "$apps_dir/zii.desktop"
+        echo "  -> Installed desktop entry: $apps_dir/zii.desktop"
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "$apps_dir" 2>/dev/null || true
+        fi
+    fi
+
+    # 4. Icons
+    local asset_dir="$src_dir/assets"
+    if [ ! -d "$asset_dir" ] && [ -d "$src_dir/ui/assets" ]; then
+        asset_dir="$src_dir/ui/assets"
+    fi
+
+    if [ -f "$asset_dir/zii.svg" ]; then
+        mkdir -p "$icons_dir/scalable/apps"
+        install -m 644 "$asset_dir/zii.svg" "$icons_dir/scalable/apps/zii.svg"
+        install -m 644 "$asset_dir/zii.svg" "$pixmaps_dir/zii.svg"
+        echo "  -> Installed scalable icon: $icons_dir/scalable/apps/zii.svg"
+    fi
+
+    for sz in 32 48 64 128 256 512; do
+        local png_src=""
+        if [ "$sz" = "512" ] && [ -f "$asset_dir/zii.png" ]; then
+            png_src="$asset_dir/zii.png"
+        elif [ -f "$asset_dir/zii-${sz}.png" ]; then
+            png_src="$asset_dir/zii-${sz}.png"
+        fi
+        if [ -n "$png_src" ]; then
+            mkdir -p "$icons_dir/${sz}x${sz}/apps"
+            install -m 644 "$png_src" "$icons_dir/${sz}x${sz}/apps/zii.png"
+        fi
+    done
+
+    if [ -f "$asset_dir/zii.png" ]; then
+        install -m 644 "$asset_dir/zii.png" "$pixmaps_dir/zii.png"
+    fi
+
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -f -t "$icons_dir" 2>/dev/null || true
+    fi
+
+    check_runtime_deps
+
+    echo "==> Successfully installed Zii!"
+    echo "    Run 'zii' in terminal or launch it from your Omarchy application menu."
+}
+
+# ------------------------------------------------------------------------------
+# Remote GitHub Release Fetcher
+# ------------------------------------------------------------------------------
+install_from_github() {
+    local is_prerelease="$1"
+    local temp_dir
+    temp_dir="$(mktemp -d -t zii_install_XXXXXX)"
+    trap 'rm -rf "$temp_dir"' EXIT
+
+    echo "==> Fetching latest $([ "$is_prerelease" = true ] && echo "pre-release" || echo "release") for Omarchy Linux..."
+
+    local api_url
+    if [ "$is_prerelease" = true ]; then
+        api_url="https://api.github.com/repos/$REPO/releases"
+    else
+        api_url="https://api.github.com/repos/$REPO/releases/latest"
+    fi
+
+    local releases_json
+    releases_json="$(curl -fsSL "$api_url" || echo "")"
+
+    if [ -z "$releases_json" ]; then
+        echo "==> Error: Could not query GitHub releases API for $REPO."
+        echo "    Check your internet connection or GitHub status."
+        exit 1
+    fi
+
+    local download_url=""
+    local tag_name=""
+
+    if [ "$is_prerelease" = true ]; then
+        # Find first release with prerelease == true
+        download_url="$(echo "$releases_json" | grep -B 25 -A 25 '"prerelease": true' | grep -o 'https://github.com/'"$REPO"'/releases/download/[^"]*x86_64-unknown-linux-gnu.tar.gz' | head -n 1 || echo "")"
+        tag_name="$(echo "$releases_json" | grep -B 10 -A 10 '"prerelease": true' | grep '"tag_name":' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")"
+    else
+        download_url="$(echo "$releases_json" | grep -o 'https://github.com/'"$REPO"'/releases/download/[^"]*x86_64-unknown-linux-gnu.tar.gz' | head -n 1 || echo "")"
+        tag_name="$(echo "$releases_json" | grep '"tag_name":' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")"
+    fi
+
+    if [ -z "$download_url" ]; then
+        echo "==> Warning: No prebuilt binary archive found in $([ "$is_prerelease" = true ] && echo "pre-releases" || echo "releases")."
+        echo "    Falling back to building directly from git source..."
+        install_from_source
+        return
+    fi
+
+    echo "==> Downloading Zii ${tag_name:-} from $download_url..."
+    curl -fsSL "$download_url" -o "$temp_dir/zii.tar.gz"
+
+    echo "==> Extracting archive..."
+    tar -xzf "$temp_dir/zii.tar.gz" -C "$temp_dir"
+
+    # Find the extracted folder
+    local extracted_dir
+    extracted_dir="$(find "$temp_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    if [ -z "$extracted_dir" ]; then
+        extracted_dir="$temp_dir"
+    fi
+
+    install_files "$extracted_dir"
+}
+
+# ------------------------------------------------------------------------------
+# Build From Source
+# ------------------------------------------------------------------------------
+install_from_source() {
+    check_build_deps
+
+    local temp_dir
+    temp_dir="$(mktemp -d -t zii_source_XXXXXX)"
+    trap 'rm -rf "$temp_dir"' EXIT
+
+    echo "==> Cloning Zii from https://github.com/$REPO.git..."
+    git clone --depth 1 "https://github.com/$REPO.git" "$temp_dir"
+
+    echo "==> Building Zii with Cargo (release mode)..."
+    (
+        cd "$temp_dir"
+        cargo build --release
+    )
+
+    install_files "$temp_dir"
+}
+
+# ------------------------------------------------------------------------------
+# Execution Flow
+# ------------------------------------------------------------------------------
+case "$MODE" in
+    source)
+        install_from_source
+        ;;
+    prerelease)
+        install_from_github true
+        ;;
+    release)
+        install_from_github false
+        ;;
+    local)
+        install_files "$SCRIPT_DIR"
+        ;;
+esac
