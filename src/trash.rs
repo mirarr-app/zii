@@ -13,7 +13,7 @@ pub struct TrashManager {
 
 impl TrashManager {
     pub fn new() -> Self {
-        let backup_dir = std::env::temp_dir().join("zi_trash_backup");
+        let backup_dir = std::env::temp_dir().join("zii_trash_backup");
         let _ = std::fs::create_dir_all(&backup_dir);
         Self {
             history: Vec::new(),

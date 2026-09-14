@@ -1,6 +1,6 @@
-# Zi (字 / 視) — Photo Viewer & Editor for Omarchy Linux
+# Zii (字 / 視) — Photo Viewer & Editor for Omarchy Linux
 
-**Zi** is a high-performance, keyboard-driven photo viewer and non-destructive image editor designed specifically for **Omarchy Linux**. Built with a multithreaded **Rust** core and a fluid **Quickshell** (Qt QML) frontend, it features Vim-style modal navigation and editing, instant trash undo, and real-time Omarchy theme hot-reloading.
+**Zii** is a high-performance, keyboard-driven photo viewer and non-destructive image editor designed specifically for **Omarchy Linux**. Built with a multithreaded **Rust** core and a fluid **Quickshell** (Qt QML) frontend, it features Vim-style modal navigation and editing, instant trash undo, and real-time Omarchy theme hot-reloading.
 
 ---
 
@@ -49,7 +49,7 @@
 | `Shift+D` | Permanently delete file |
 | `u` | Undo trash (restore last deleted photo) |
 | `i` | **Enter Edit Mode** |
-| `q` / `Esc` | Quit Zi |
+| `q` / `Esc` | Quit Zii |
 
 ### Edit Mode (`-- EDIT --`)
 
@@ -76,7 +76,7 @@
 ## Architecture
 
 ```
-zi [IMAGE_OR_FOLDER]
+zii [IMAGE_OR_FOLDER]
        |
        +---> [Rust Backend] <======== JSON-RPC IPC ========> [Quickshell Frontend]
              - Image Pipeline         (Unix Domain Socket)   - FloatingWindow / Viewport
@@ -110,11 +110,11 @@ cargo build --release
 
 ```bash
 # View current directory
-./target/release/zi
+./target/release/zii
 
 # Open a specific image or folder
-./target/release/zi ~/Pictures/photo.jpg
-./target/release/zi ~/Pictures/Wallpapers/
+./target/release/zii ~/Pictures/photo.jpg
+./target/release/zii ~/Pictures/Wallpapers/
 ```
 
 ### Install into User PATH
@@ -122,6 +122,6 @@ cargo build --release
 ```bash
 # Symlink or copy binary
 mkdir -p ~/.local/bin ~/.local/share/applications
-ln -sf $(pwd)/target/release/zi ~/.local/bin/zi
-cp zi.desktop ~/.local/share/applications/
+ln -sf $(pwd)/target/release/zii ~/.local/bin/zii
+cp zii.desktop ~/.local/share/applications/
 ```

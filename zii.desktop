@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Zi
+Name=Zii
 GenericName=Photo Viewer & Editor
 Comment=Blazing-fast photo viewer and editor for Omarchy Linux
-Exec=zi %F
+Exec=zii %F
 Terminal=false
 Type=Application
 Icon=image-x-generic

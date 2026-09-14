@@ -34,7 +34,7 @@ ShellRoot {
     // Socket connection to Rust backend
     Socket {
         id: socket
-        path: Quickshell.env("ZI_SOCKET") || "/tmp/zi.sock"
+        path: Quickshell.env("ZII_SOCKET") || "/tmp/zii.sock"
 
         parser: SplitParser {
             splitMarker: "\n"
@@ -123,7 +123,7 @@ ShellRoot {
     // Main window
     FloatingWindow {
         id: win
-        title: (root.currentMode === "EDIT" ? "[EDIT] " : "") + (root.currentEntry ? root.currentEntry.filename : "Zi Photo Viewer")
+        title: (root.currentMode === "EDIT" ? "[EDIT] " : "") + (root.currentEntry ? root.currentEntry.filename : "Zii Photo Viewer")
         implicitWidth: 1280
         implicitHeight: 820
         color: theme.darkerBackground

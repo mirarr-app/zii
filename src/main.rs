@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
     let theme = ThemeManager::new();
 
     let pid = std::process::id();
-    let socket_path = std::env::temp_dir().join(format!("zi_{}.sock", pid));
+    let socket_path = std::env::temp_dir().join(format!("zii_{}.sock", pid));
 
     let app_state = Arc::new(Mutex::new(AppState {
         scanner,
@@ -70,11 +70,11 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| PathBuf::from("."));
 
     // Check UI search paths:
-    // 1. ZI_UI_PATH env var
+    // 1. ZII_UI_PATH env var
     // 2. Relative to working dir: ./ui/shell.qml
-    // 3. Relative to binary: ../ui/shell.qml or share/zi/ui/shell.qml
-    // 4. Source dir: /home/parsa/Work/zi/ui/shell.qml
-    let ui_path = if let Ok(custom) = std::env::var("ZI_UI_PATH") {
+    // 3. Relative to binary: ../ui/shell.qml or share/zii/ui/shell.qml
+    // 4. Source dir
+    let ui_path = if let Ok(custom) = std::env::var("ZII_UI_PATH") {
         PathBuf::from(custom)
     } else if Path::new("ui/shell.qml").exists() {
         PathBuf::from("ui/shell.qml").canonicalize().unwrap_or_else(|_| PathBuf::from("ui/shell.qml"))
@@ -86,14 +86,14 @@ async fn main() -> anyhow::Result<()> {
         PathBuf::from("/home/parsa/Work/zi/ui/shell.qml")
     };
 
-    println!("Starting Zi with target: {:?}", target_path);
+    println!("Starting Zii with target: {:?}", target_path);
     println!("Socket: {:?}", socket_path);
     println!("Loading UI: {:?}", ui_path);
 
     // Launch Quickshell child process using tokio::process
     let mut qs_cmd = tokio::process::Command::new("quickshell");
     qs_cmd.arg("-p").arg(&ui_path);
-    qs_cmd.env("ZI_SOCKET", &socket_path);
+    qs_cmd.env("ZII_SOCKET", &socket_path);
 
     let mut qs_child = match qs_cmd.spawn() {
         Ok(child) => child,
@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Cleanup socket
     let _ = std::fs::remove_file(&socket_path);
-    println!("Zi closed cleanly.");
+    println!("Zii closed cleanly.");
 
     Ok(())
 }

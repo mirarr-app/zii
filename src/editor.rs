@@ -32,7 +32,7 @@ pub struct ImageEditor {
 
 impl ImageEditor {
     pub fn new() -> Self {
-        let cache_dir = std::env::temp_dir().join("zi_preview_cache");
+        let cache_dir = std::env::temp_dir().join("zii_preview_cache");
         let _ = std::fs::create_dir_all(&cache_dir);
         Self {
             original_path: PathBuf::new(),
@@ -218,7 +218,7 @@ impl ImageEditor {
         // Atomic save using temporary file in the same directory
         let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
         let temp_file = tempfile::Builder::new()
-            .prefix(".zi_save_")
+            .prefix(".zii_save_")
             .tempfile_in(parent)?;
 
         img.save_with_format(temp_file.path(), format)
