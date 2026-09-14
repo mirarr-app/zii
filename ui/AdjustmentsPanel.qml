@@ -12,6 +12,12 @@ Rectangle {
     signal closed()
 
     visible: active
+    onActiveChanged: {
+        if (active) {
+            root.brightness = 0;
+            root.contrast = 0;
+        }
+    }
     opacity: active ? 1.0 : 0.0
     scale: active ? 1.0 : 0.95
     Behavior on opacity { NumberAnimation { duration: 180 } }
@@ -105,16 +111,17 @@ Rectangle {
                 }
 
                 MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -8
+                    anchors.centerIn: parent
+                    width: parent.width
+                    height: 28
                     cursorShape: Qt.PointingHandCursor
                     onPositionChanged: mouse => {
-                        var frac = Math.max(0, Math.min(1, mouse.x / parent.width));
+                        var frac = Math.max(0, Math.min(1, mouse.x / width));
                         root.brightness = Math.round((frac * 200) - 100);
                         applyDebounce.restart();
                     }
                     onClicked: mouse => {
-                        var frac = Math.max(0, Math.min(1, mouse.x / parent.width));
+                        var frac = Math.max(0, Math.min(1, mouse.x / width));
                         root.brightness = Math.round((frac * 200) - 100);
                         applyDebounce.restart();
                     }
@@ -176,16 +183,17 @@ Rectangle {
                 }
 
                 MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -8
+                    anchors.centerIn: parent
+                    width: parent.width
+                    height: 28
                     cursorShape: Qt.PointingHandCursor
                     onPositionChanged: mouse => {
-                        var frac = Math.max(0, Math.min(1, mouse.x / parent.width));
+                        var frac = Math.max(0, Math.min(1, mouse.x / width));
                         root.contrast = Math.round((frac * 200) - 100);
                         applyDebounce.restart();
                     }
                     onClicked: mouse => {
-                        var frac = Math.max(0, Math.min(1, mouse.x / parent.width));
+                        var frac = Math.max(0, Math.min(1, mouse.x / width));
                         root.contrast = Math.round((frac * 200) - 100);
                         applyDebounce.restart();
                     }

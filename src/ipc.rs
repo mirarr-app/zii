@@ -349,6 +349,7 @@ async fn process_request(
         }
         ClientRequest::EditCancel => {
             st.edit_active = false;
+            st.editor.adjustment_base = None;
             send_event(ServerEvent::EditState {
                 active: false,
                 preview_path: None,
@@ -525,6 +526,7 @@ async fn process_request(
         }
         ClientRequest::EditSave { overwrite, filename } => {
             if st.edit_active {
+                st.editor.commit_adjustments();
                 let custom_path = filename.map(PathBuf::from);
                 match st.editor.save(overwrite, custom_path.as_deref()) {
                     Ok(saved_path) => {

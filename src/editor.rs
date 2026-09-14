@@ -23,6 +23,7 @@ impl Default for Adjustments {
 pub struct ImageEditor {
     pub original_path: PathBuf,
     pub base_image: Option<DynamicImage>,
+    pub adjustment_base: Option<DynamicImage>,
     pub undo_stack: Vec<DynamicImage>,
     pub redo_stack: Vec<DynamicImage>,
     pub current_image: Option<DynamicImage>,
@@ -37,6 +38,7 @@ impl ImageEditor {
         Self {
             original_path: PathBuf::new(),
             base_image: None,
+            adjustment_base: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             current_image: None,
@@ -51,6 +53,7 @@ impl ImageEditor {
             .with_context(|| format!("Failed to open image at {:?}", path))?;
         self.base_image = Some(img.clone());
         self.current_image = Some(img);
+        self.adjustment_base = None;
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.revision += 1;
@@ -72,7 +75,14 @@ impl ImageEditor {
         !self.redo_stack.is_empty()
     }
 
+    pub fn commit_adjustments(&mut self) {
+        if let Some(base) = self.adjustment_base.take() {
+            self.push_undo(base);
+        }
+    }
+
     pub fn crop(&mut self, x: u32, y: u32, width: u32, height: u32) -> anyhow::Result<PathBuf> {
+        self.commit_adjustments();
         let img = match &self.current_image {
             Some(i) => i.clone(),
             None => anyhow::bail!("No image currently loaded in editor"),
@@ -95,6 +105,7 @@ impl ImageEditor {
     }
 
     pub fn rotate(&mut self, degrees: i32) -> anyhow::Result<PathBuf> {
+        self.commit_adjustments();
         let img = match &self.current_image {
             Some(i) => i.clone(),
             None => anyhow::bail!("No image currently loaded in editor"),
@@ -114,6 +125,7 @@ impl ImageEditor {
     }
 
     pub fn flip(&mut self, horizontal: bool, vertical: bool) -> anyhow::Result<PathBuf> {
+        self.commit_adjustments();
         let mut img = match &self.current_image {
             Some(i) => i.clone(),
             None => anyhow::bail!("No image currently loaded in editor"),
@@ -134,6 +146,7 @@ impl ImageEditor {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) -> anyhow::Result<PathBuf> {
+        self.commit_adjustments();
         let img = match &self.current_image {
             Some(i) => i.clone(),
             None => anyhow::bail!("No image currently loaded in editor"),
@@ -152,13 +165,15 @@ impl ImageEditor {
     }
 
     pub fn adjust(&mut self, brightness: i32, contrast: f32) -> anyhow::Result<PathBuf> {
-        let img = match &self.current_image {
-            Some(i) => i.clone(),
-            None => anyhow::bail!("No image currently loaded in editor"),
-        };
+        if self.adjustment_base.is_none() {
+            match &self.current_image {
+                Some(i) => self.adjustment_base = Some(i.clone()),
+                None => anyhow::bail!("No image currently loaded in editor"),
+            }
+        }
 
-        let previous = img.clone();
-        let mut adjusted = img;
+        let base = self.adjustment_base.as_ref().unwrap();
+        let mut adjusted = base.clone();
 
         if brightness != 0 {
             adjusted = adjusted.brighten(brightness);
@@ -167,13 +182,13 @@ impl ImageEditor {
             adjusted = adjusted.adjust_contrast(contrast);
         }
 
-        self.push_undo(previous);
         self.current_image = Some(adjusted);
         self.revision += 1;
         self.generate_preview()
     }
 
     pub fn undo(&mut self) -> anyhow::Result<Option<PathBuf>> {
+        self.commit_adjustments();
         if let Some(prev) = self.undo_stack.pop() {
             if let Some(curr) = self.current_image.take() {
                 self.redo_stack.push(curr);
@@ -186,6 +201,7 @@ impl ImageEditor {
     }
 
     pub fn redo(&mut self) -> anyhow::Result<Option<PathBuf>> {
+        self.commit_adjustments();
         if let Some(next) = self.redo_stack.pop() {
             if let Some(curr) = self.current_image.take() {
                 self.undo_stack.push(curr);
