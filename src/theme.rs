@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use notify::{Watcher, RecursiveMode, Event};
 use tokio::sync::mpsc;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OmarchyTheme {
     pub name: String,
     pub background: String,
@@ -143,13 +143,17 @@ impl ThemeManager {
             }
 
             let mut theme_mgr = ThemeManager::new();
+            let mut last_theme = theme_mgr.current_theme.clone();
             while let Ok(_event) = notify_rx.recv() {
                 // Debounce slightly
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 while notify_rx.try_recv().is_ok() {}
 
                 theme_mgr.reload();
-                let _ = tx.blocking_send(theme_mgr.current_theme.clone());
+                if theme_mgr.current_theme != last_theme {
+                    last_theme = theme_mgr.current_theme.clone();
+                    let _ = tx.blocking_send(last_theme.clone());
+                }
             }
         });
 

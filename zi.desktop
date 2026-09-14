@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Zi
+GenericName=Photo Viewer & Editor
+Comment=Blazing-fast photo viewer and editor for Omarchy Linux
+Exec=zi %F
+Terminal=false
+Type=Application
+Icon=image-x-generic
+Categories=Graphics;2DGraphics;RasterGraphics;Photography;Viewer;
+MimeType=image/jpeg;image/png;image/webp;image/gif;image/bmp;image/tiff;image/svg+xml;image/x-icon;
+Keywords=Picture;Image;Photo;Viewer;Editor;Vim;Omarchy;
