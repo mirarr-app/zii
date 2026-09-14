@@ -95,7 +95,7 @@ ShellRoot {
     property real displayHeight: 0
     property bool canUndo: false
     property bool canRedo: false
-    property bool isFullscreen: false
+    property bool isFullscreen: Quickshell.env("ZII_FULLSCREEN") === "1"
 
     function handleServerEvent(msg) {
         if (!msg || !msg.type) return;
@@ -114,6 +114,9 @@ ShellRoot {
                 root.activeImagePath = "";
                 root.displayWidth = 0;
                 root.displayHeight = 0;
+            }
+            if (exifOverlay.active) {
+                root.sendIpc({ type: "get_exif" });
             }
             hud.wake();
         } else if (msg.type === "edit_state") {
@@ -138,6 +141,8 @@ ShellRoot {
                 }
             }
             hud.wake();
+        } else if (msg.type === "exif_data") {
+            exifOverlay.exifData = msg.data;
         } else if (msg.type === "toast") {
             toast.show(msg.message, msg.level);
         } else if (msg.type === "close") {
@@ -348,6 +353,17 @@ ShellRoot {
                 }
             }
 
+            // EXIF metadata inspector modal (toggled by 'e' or 'x')
+            ExifOverlay {
+                id: exifOverlay
+                theme: theme
+                active: false
+
+                onClosed: {
+                    exifOverlay.active = false;
+                }
+            }
+
             // Keyboard Dispatcher
             KeyHandler {
                 id: keyHandler
@@ -356,9 +372,25 @@ ShellRoot {
                 adjustActive: adjPanel.active
                 saveDialogActive: saveDlg.active
                 helpActive: helpOverlay.active
+                exifActive: exifOverlay.active
 
                 onToggleHelp: {
                     helpOverlay.active = !helpOverlay.active;
+                }
+
+                onToggleExif: {
+                    exifOverlay.active = !exifOverlay.active;
+                    if (exifOverlay.active) {
+                        root.sendIpc({ type: "get_exif" });
+                    }
+                }
+
+                onClipboardCopy: pathOnly => {
+                    root.sendIpc({ type: "clipboard_copy", path_only: pathOnly });
+                }
+
+                onSetWallpaper: {
+                    root.sendIpc({ type: "set_wallpaper" });
                 }
 
                 onTogglePlayback: {

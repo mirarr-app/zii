@@ -8,9 +8,13 @@ Item {
     property bool adjustActive: false
     property bool saveDialogActive: false
     property bool helpActive: false
+    property bool exifActive: false
 
     // Signals emitted for actions
     signal toggleHelp()
+    signal toggleExif()
+    signal clipboardCopy(bool pathOnly)
+    signal setWallpaper()
     signal navigatePrev()
     signal navigateNext()
     signal pan(real dx, real dy)
@@ -71,6 +75,17 @@ Item {
         if (root.helpActive) {
             if (key === Qt.Key_Escape || text === "?") {
                 root.toggleHelp();
+                event.accepted = true;
+                return;
+            }
+            event.accepted = true;
+            return;
+        }
+
+        // EXIF overlay intercepts keys when active
+        if (root.exifActive) {
+            if (key === Qt.Key_Escape || text === "e" || text === "x") {
+                root.toggleExif();
                 event.accepted = true;
                 return;
             }
@@ -276,6 +291,32 @@ Item {
         // Enter edit mode
         if (text === "i") {
             root.enterEditMode();
+            event.accepted = true;
+            return;
+        }
+
+        // EXIF metadata inspector: 'e' or 'x'
+        if (text === "e" || text === "x") {
+            root.toggleExif();
+            event.accepted = true;
+            return;
+        }
+
+        // Wayland clipboard yank: 'y' for image, 'Y' (Shift+y) for path
+        if (text === "Y" || (text === "y" && hasShift)) {
+            root.clipboardCopy(true);
+            event.accepted = true;
+            return;
+        }
+        if (text === "y") {
+            root.clipboardCopy(false);
+            event.accepted = true;
+            return;
+        }
+
+        // Omarchy desktop wallpaper action: 'W' (Shift+w)
+        if (text === "W" || (text === "w" && hasShift)) {
+            root.setWallpaper();
             event.accepted = true;
             return;
         }

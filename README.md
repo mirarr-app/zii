@@ -7,23 +7,28 @@
 ## Features
 
 - ⚡ **Blazing Performance**: Native Rust image processing engine handling JPEG, PNG, WebP, GIF, BMP, TIFF, SVG, and ICO.
-- 🎨 **Live Omarchy Theming**: Automatically syncs with `~/.local/state/omarchy/current/theme/colors.toml` in real time with zero restart required.
+- 🎨 **Live Omarchy Theming**: Automatically syncs with `~/.local/state/omarchy/current/theme/colors.toml` in real time with zero restart required, supporting both canonical Quattro semantic roles and legacy theme keys.
+- 📐 **EXIF Auto-Orientation & Inspector (`e` / `x`)**: Automatically applies digital camera and smartphone EXIF orientation tags. Press `e` or `x` for a sleek metadata inspector showing camera model, lens, exposure, aperture, ISO, and focal length.
+- 📋 **Wayland Clipboard & Wallpaper**: Press `y` to yank the photo directly to the Wayland clipboard (`wl-copy`), `Y` to copy the file path, or `W` to set the image as the Omarchy desktop wallpaper (`omarchy-theme-bg-set`).
+- 🎞️ **Animated GIF & WebP Playback (`Space`)**: Fluid animated playback with pause, frame counter, and looping.
+- 🔍 **Crisp Pixel Zoom**: Automatic nearest-neighbor filtering above 150% zoom so pixel art, logos, and high-magnification details stay sharp instead of blurry.
+- 🔄 **Live Directory Watcher**: Detects newly captured screenshots, downloaded images, or files deleted in file managers (Yazi, Nautilus) in real-time.
 - ⌨️ **Vim-Modal Keybindings**:
   - `h` / `l` / Arrow keys for browsing directory images.
-  - `j` / `k` for panning when zoomed in.
+  - `j` / `k` for panning when zoomed in (clamped to window boundaries).
   - `+` / `-` / `z` / `Z` / mouse wheel for smooth focal zooming; `0` to fit to window; `1` for 1:1 original scale.
   - `dd` moves photo directly to FreeDesktop Trash; `u` restores it instantly; `Shift+D` permanently deletes.
   - `f` / `F11` for fullscreen toggle.
   - `i` enters **Edit Mode**.
   - `q` / `Esc` quits.
 - ✂️ **Non-Destructive Image Editor (`i`)**:
-  - **Crop (`c`)**: Interactive 8-handle crop overlay with dark scrim and rule-of-thirds grid. Drag handles with mouse or use arrow keys (move) and `Shift`+arrows (resize), then press `Enter` to apply.
+  - **Crop (`c`)**: Interactive 8-handle crop overlay with rule-of-thirds grid and aspect ratio presets (`Free`, `1:1`, `16:9`, `4:3`, `3:2`, `9:16`). Drag handles with mouse or use arrow keys (move) and `Shift`+arrows (resize), then press `Enter` to apply.
   - **Rotate (`r` / `R`)**: 90° clockwise and counter-clockwise.
   - **Flip (`h` / `v`)**: Horizontal and vertical flipping.
-  - **Adjustments (`a`)**: Live Brightness and Contrast sliders with keyboard brackets (`[` / `]`) and reset button.
-  - **Undo / Redo (`u` / `Ctrl+r`)**: Full multi-step undo/redo stack.
-  - **Atomic Saving (`w` / `s`)**: `w` overwrites original directly with atomic rename safety; `s` opens quick choice to overwrite or save as a new copy (e.g. `_edited_1.png`).
-- 🕶️ **Minimalist Auto-Hiding HUD**: Floating translucent status pill showing mode, filename, resolution, filesize, zoom %, and `[index/total]`. Automatically fades out during viewing and wakes on mouse or key input.
+  - **Adjustments (`a`)**: Live Brightness, Contrast, and Saturation sliders with keyboard brackets (`[` / `]`) and reset button.
+  - **Undo / Redo (`u` / `Ctrl+r`)**: Full multi-step undo/redo stack. Viewport pan and zoom are smoothly preserved across edit operations.
+  - **Atomic & High-Quality Saving (`w` / `s`)**: `w` overwrites original directly with atomic rename safety and 95% high-quality JPEG encoding; `s` opens quick choice to overwrite or save as a new copy (e.g. `_edited_1.png`).
+- 🕶️ **Minimalist Auto-Hiding HUD**: Floating translucent status pill showing mode, filename, resolution, filesize, zoom %, animation frame, and `[index/total]`. Automatically fades out during viewing and wakes on mouse or key input.
 
 ---
 
@@ -41,13 +46,19 @@
 | `-` / `_` / `Z` | Zoom out |
 | `0` | Fit to window |
 | `1` | 100% (1:1 original pixel scale) |
-| `Scroll Wheel` | Zoom toward cursor |
+| `Scroll Wheel` | Zoom toward cursor (crisp nearest-neighbor above 150%) |
 | `Double Click` | Toggle fit / 100% zoom |
-| `Left Mouse Drag` | Pan image smoothly |
+| `Left Mouse Drag` | Pan image smoothly (clamped to viewport) |
+| `Space` | Play / pause animated GIF & WebP playback |
+| `y` | Copy image to Wayland clipboard (`wl-copy`) |
+| `Y` (Shift+y) | Copy absolute file path to clipboard |
+| `W` (Shift+w) | Set as Omarchy desktop wallpaper (`omarchy-theme-bg-set`) |
+| `e` / `x` | Toggle detailed EXIF metadata inspector modal |
 | `f` / `F11` | Fullscreen toggle |
 | `dd` | Move image to Trash (FreeDesktop trash) |
 | `Shift+D` | Permanently delete file |
 | `u` | Undo trash (restore last deleted photo) |
+| `?` | Toggle keyboard shortcuts help |
 | `i` | **Enter Edit Mode** |
 | `q` / `Esc` | Quit Zii |
 
@@ -57,18 +68,23 @@
 |----------|-------------|
 | `Esc` | Exit Edit Mode (or cancel active crop / tool) |
 | `c` | Toggle interactive Crop tool |
+| `0` (in crop) | Free aspect ratio |
+| `1` (in crop) | 1:1 Square aspect ratio |
+| `2` (in crop) | 16:9 aspect ratio |
+| `3` (in crop) | 4:3 aspect ratio |
+| `4` (in crop) | 3:2 aspect ratio |
 | `Arrow Keys` (in crop) | Move crop selection box |
-| `Shift + Arrow Keys` | Resize crop selection box |
+| `Shift + Arrow Keys` | Resize crop selection box (preserves aspect ratio) |
 | `Enter` (in crop) | Apply crop |
 | `r` | Rotate 90° Clockwise |
 | `R` (Shift+r) | Rotate 90° Counter-Clockwise |
 | `h` | Flip Horizontal |
 | `v` | Flip Vertical |
-| `a` | Toggle Adjustments panel (Brightness & Contrast) |
+| `a` | Toggle Adjustments panel (Brightness, Contrast, Saturation) |
 | `[` / `]` | Decrease / increase adjustment value |
 | `u` | Undo edit operation |
 | `Ctrl+r` | Redo edit operation |
-| `w` | Overwrite original file directly |
+| `w` | Overwrite original file directly (95% high-quality JPEG) |
 | `s` | Open save options (Overwrite or Save New Copy) |
 
 ---

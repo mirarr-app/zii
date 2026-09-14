@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use notify::Watcher;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageEntry {
@@ -15,6 +16,7 @@ pub struct DirectoryScanner {
     pub current_dir: PathBuf,
     pub entries: Vec<ImageEntry>,
     pub current_index: usize,
+    pub explicit_files: Option<Vec<PathBuf>>,
 }
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
@@ -37,6 +39,7 @@ impl DirectoryScanner {
             current_dir: dir.clone(),
             entries: Vec::new(),
             current_index: 0,
+            explicit_files: None,
         };
 
         scanner.rescan()?;
@@ -50,37 +53,126 @@ impl DirectoryScanner {
         Ok(scanner)
     }
 
-    pub fn rescan(&mut self) -> anyhow::Result<()> {
-        let mut found_paths = Vec::new();
-        if let Ok(read_dir) = std::fs::read_dir(&self.current_dir) {
-            for entry in read_dir.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        let lower_ext = ext.to_ascii_lowercase();
-                        if SUPPORTED_EXTENSIONS.contains(&lower_ext.as_str()) {
-                            found_paths.push(path);
-                        }
-                    }
+    pub fn from_paths(paths: &[PathBuf]) -> anyhow::Result<Self> {
+        if paths.is_empty() {
+            return Self::new(Path::new("."));
+        }
+        if paths.len() == 1 {
+            return Self::new(&paths[0]);
+        }
+
+        let mut entries = Vec::new();
+        let mut explicit = Vec::new();
+
+        for p in paths {
+            let can = p.canonicalize().unwrap_or_else(|_| p.clone());
+            if can.is_file() {
+                if let Some(entry) = Self::probe_image(&can) {
+                    entries.push(entry);
+                    explicit.push(can);
                 }
             }
         }
 
-        // Natural sort by filename
-        found_paths.sort_by(|a, b| {
-            let name_a = a.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            let name_b = b.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            natord::compare(name_a, name_b)
-        });
+        if entries.is_empty() {
+            let dir = paths[0].parent().unwrap_or_else(|| Path::new("."));
+            return Self::new(dir);
+        }
 
-        self.entries = found_paths
-            .into_iter()
-            .filter_map(|p| Self::probe_image(&p))
-            .collect();
+        let current_dir = explicit[0]
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+
+        Ok(Self {
+            current_dir,
+            entries,
+            current_index: 0,
+            explicit_files: Some(explicit),
+        })
+    }
+
+    pub fn rescan(&mut self) -> anyhow::Result<()> {
+        if let Some(ref explicit) = self.explicit_files {
+            self.entries = explicit
+                .iter()
+                .filter(|p| p.exists() && p.is_file())
+                .filter_map(|p| Self::probe_image(p))
+                .collect();
+        } else {
+            let mut found_paths = Vec::new();
+            if let Ok(read_dir) = std::fs::read_dir(&self.current_dir) {
+                for entry in read_dir.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                            let lower_ext = ext.to_ascii_lowercase();
+                            if SUPPORTED_EXTENSIONS.contains(&lower_ext.as_str()) {
+                                found_paths.push(path);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Natural sort by filename
+            found_paths.sort_by(|a, b| {
+                let name_a = a.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let name_b = b.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                natord::compare(name_a, name_b)
+            });
+
+            self.entries = found_paths
+                .into_iter()
+                .filter_map(|p| Self::probe_image(&p))
+                .collect();
+        }
 
         if self.current_index >= self.entries.len() && !self.entries.is_empty() {
             self.current_index = self.entries.len() - 1;
         }
+
+        Ok(())
+    }
+
+    pub fn start_watcher(watch_dir: PathBuf, tx: tokio::sync::mpsc::Sender<()>) -> anyhow::Result<()> {
+        if !watch_dir.exists() {
+            return Ok(());
+        }
+
+        tokio::task::spawn_blocking(move || {
+            let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+            let mut watcher = match notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(evt) = res {
+                    use notify::event::EventKind;
+                    match evt.kind {
+                        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) => {
+                            let _ = notify_tx.send(());
+                        }
+                        _ => {}
+                    }
+                }
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("Directory watcher error: {:?}", e);
+                    return;
+                }
+            };
+
+            if let Err(e) = watcher.watch(&watch_dir, notify::RecursiveMode::NonRecursive) {
+                eprintln!("Failed to watch directory {:?}: {:?}", watch_dir, e);
+                return;
+            }
+
+            while let Ok(()) = notify_rx.recv() {
+                // Debounce events by ~200ms
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                while notify_rx.try_recv().is_ok() {}
+
+                let _ = tx.blocking_send(());
+            }
+        });
 
         Ok(())
     }
@@ -140,6 +232,9 @@ impl DirectoryScanner {
             return None;
         }
         let removed = self.entries.remove(self.current_index);
+        if let Some(ref mut explicit) = self.explicit_files {
+            explicit.retain(|p| p != &removed.path);
+        }
         if self.current_index >= self.entries.len() && !self.entries.is_empty() {
             self.current_index = self.entries.len() - 1;
         }
@@ -268,5 +363,18 @@ mod tests {
         let scanner = DirectoryScanner::new(sample).unwrap();
         assert!(!scanner.entries.is_empty());
         assert_eq!(scanner.current().unwrap().filename, "sample_2.jpg");
+    }
+
+    #[test]
+    fn test_from_paths_multiple() {
+        let paths = vec![
+            PathBuf::from("tests/samples/sample_1.png"),
+            PathBuf::from("tests/samples/sample_2.jpg"),
+        ];
+        let scanner = DirectoryScanner::from_paths(&paths).unwrap();
+        assert_eq!(scanner.entries.len(), 2);
+        assert_eq!(scanner.entries[0].filename, "sample_1.png");
+        assert_eq!(scanner.entries[1].filename, "sample_2.jpg");
+        assert!(scanner.explicit_files.is_some());
     }
 }

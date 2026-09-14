@@ -2,6 +2,7 @@ mod scanner;
 mod theme;
 mod trash;
 mod editor;
+mod exif_inspector;
 mod ipc;
 
 use std::path::{Path, PathBuf};
@@ -87,22 +88,115 @@ fn resolve_ui_path() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/shell.qml"))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct CliConfig {
+    pub show_help: bool,
+    pub show_version: bool,
+    pub fullscreen: bool,
+    pub targets: Vec<PathBuf>,
+}
+
+pub fn parse_cli_args<I, T>(args: I) -> CliConfig
+where
+    I: IntoIterator<Item = T>,
+    T: AsRef<str>,
+{
+    let mut show_help = false;
+    let mut show_version = false;
+    let mut fullscreen = false;
+    let mut targets = Vec::new();
+
+    let mut iter = args.into_iter();
+    let _bin_name = iter.next(); // Skip program name if present
+
+    for arg in iter {
+        let s = arg.as_ref();
+        match s {
+            "-h" | "--help" => show_help = true,
+            "-v" | "--version" => show_version = true,
+            "-f" | "--fullscreen" => fullscreen = true,
+            other => {
+                if !other.is_empty() {
+                    targets.push(PathBuf::from(other));
+                }
+            }
+        }
+    }
+
+    CliConfig {
+        show_help,
+        show_version,
+        fullscreen,
+        targets,
+    }
+}
+
+fn print_help() {
+    println!(r#"Zii 0.1.0 - Fast, minimalist Wayland photo viewer & editor for Omarchy
+
+USAGE:
+    zii [OPTIONS] [PATH]...
+
+ARGS:
+    <PATH>...    Image file(s) or directory to open [default: .]
+
+OPTIONS:
+    -f, --fullscreen    Start in fullscreen mode
+    -h, --help          Print help information
+    -v, --version       Print version information
+
+KEYBINDINGS (Normal Mode):
+    h, Left             Previous image
+    l, Right            Next image
+    j, Down             Pan down
+    k, Up               Pan up
+    +, =, z             Zoom in
+    -, _, Z             Zoom out
+    0                   Reset zoom & fit to window
+    1                   100% (1:1 pixel scale)
+    f, F11              Toggle fullscreen
+    Space               Play / pause animated GIF/WebP
+    i                   Enter Edit Mode
+    y                   Copy image to clipboard (wl-copy)
+    Y                   Copy image path to clipboard
+    W                   Set as Omarchy desktop wallpaper
+    e, x                Toggle EXIF metadata inspector
+    dd                  Move to trash
+    Shift+D             Permanently delete
+    u                   Restore from trash / Undo
+    ?                   Toggle keyboard shortcuts help
+    q, Esc              Quit
+
+KEYBINDINGS (Edit Mode):
+    c                   Interactive crop tool (0-4 aspect ratios, Enter to apply)
+    r / R               Rotate 90° clockwise / counter-clockwise
+    h / v               Flip horizontal / vertical
+    a                   Adjustments panel (Brightness / Contrast / Saturation)
+    [ / ]               Decrease / increase active adjustment slider
+    u / Ctrl+r          Undo / Redo edit step
+    w                   Save and overwrite original
+    s                   Save copy dialog
+    Esc                 Cancel tool / Exit Edit Mode
+"#);
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    let target = if args.len() > 1 {
-        PathBuf::from(&args[1])
-    } else {
-        PathBuf::from(".")
-    };
+    let cli = parse_cli_args(&args);
 
-    let target_path = if target.exists() {
-        target.canonicalize().unwrap_or(target)
-    } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    };
+    if cli.show_version {
+        println!("zii 0.1.0");
+        return Ok(());
+    }
 
-    let scanner = DirectoryScanner::new(&target_path)?;
+    if cli.show_help {
+        print_help();
+        return Ok(());
+    }
+
+    let scanner = DirectoryScanner::from_paths(&cli.targets)?;
+    let watch_dir = scanner.current_dir.clone();
     let trash = TrashManager::new();
     let editor = ImageEditor::new();
     let theme = ThemeManager::new();
@@ -119,6 +213,7 @@ async fn main() -> anyhow::Result<()> {
     }));
 
     let (theme_tx, theme_rx) = mpsc::channel(16);
+    let (dir_tx, dir_rx) = mpsc::channel(16);
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
 
     // Start Omarchy theme watcher
@@ -126,19 +221,24 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("Theme watcher warning: {:?}", e);
     }
 
+    // Start live directory watcher
+    if let Err(e) = DirectoryScanner::start_watcher(watch_dir, dir_tx) {
+        eprintln!("Directory watcher warning: {:?}", e);
+    }
+
     // Spawn IPC server
     let s_path = socket_path.clone();
     let s_state = app_state.clone();
     let s_shutdown_tx = shutdown_tx.clone();
     tokio::spawn(async move {
-        if let Err(e) = run_ipc_server(s_path, s_state, theme_rx, s_shutdown_tx).await {
+        if let Err(e) = run_ipc_server(s_path, s_state, theme_rx, dir_rx, s_shutdown_tx).await {
             eprintln!("IPC Server error: {:?}", e);
         }
     });
 
     let ui_path = resolve_ui_path();
 
-    println!("Starting Zii with target: {:?}", target_path);
+    println!("Starting Zii with {} targets", cli.targets.len());
     println!("Socket: {:?}", socket_path);
     println!("Loading UI: {:?}", ui_path);
 
@@ -146,6 +246,9 @@ async fn main() -> anyhow::Result<()> {
     let mut qs_cmd = tokio::process::Command::new("quickshell");
     qs_cmd.arg("-p").arg(&ui_path);
     qs_cmd.env("ZII_SOCKET", &socket_path);
+    if cli.fullscreen {
+        qs_cmd.env("ZII_FULLSCREEN", "1");
+    }
 
     let mut qs_child = match qs_cmd.spawn() {
         Ok(child) => child,
@@ -201,5 +304,32 @@ mod tests {
     fn test_resolve_ui_path_fallback() {
         let path = resolve_ui_path();
         assert!(path.ends_with("ui/shell.qml"));
+    }
+
+    #[test]
+    fn test_parse_cli_args_help() {
+        let args = vec!["zii", "--help"];
+        let cfg = parse_cli_args(args);
+        assert!(cfg.show_help);
+        assert!(!cfg.fullscreen);
+        assert!(!cfg.show_version);
+    }
+
+    #[test]
+    fn test_parse_cli_args_version() {
+        let args = vec!["zii", "-v"];
+        let cfg = parse_cli_args(args);
+        assert!(cfg.show_version);
+        assert!(!cfg.show_help);
+    }
+
+    #[test]
+    fn test_parse_cli_args_fullscreen_and_files() {
+        let args = vec!["zii", "-f", "img1.png", "img2.jpg"];
+        let cfg = parse_cli_args(args);
+        assert!(cfg.fullscreen);
+        assert_eq!(cfg.targets.len(), 2);
+        assert_eq!(cfg.targets[0], PathBuf::from("img1.png"));
+        assert_eq!(cfg.targets[1], PathBuf::from("img2.jpg"));
     }
 }

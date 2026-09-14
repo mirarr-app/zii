@@ -305,6 +305,10 @@ Rectangle {
     readonly property var actionsShortcutsModel: [
         { keys: ["Space"], desc: "Play / pause animated GIF or WebP" },
         { keys: ["i"], desc: "Enter Edit Mode" },
+        { keys: ["e", "x"], desc: "Toggle EXIF metadata inspector" },
+        { keys: ["y"], desc: "Copy image to clipboard (wl-copy)" },
+        { keys: ["Y"], desc: "Copy image path to clipboard" },
+        { keys: ["W"], desc: "Set as Omarchy desktop wallpaper" },
         { keys: ["dd"], desc: "Move photo directly to Trash" },
         { keys: ["u"], desc: "Undo last delete (restore from trash)" },
         { keys: ["Shift+D"], desc: "Permanently delete file" },
