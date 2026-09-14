@@ -216,7 +216,7 @@ ShellRoot {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Zii (字 / 視)"
+                    text: "Zii (字)"
                     color: theme.brightForeground
                     font.family: theme.fontFamily
                     font.pixelSize: 20
