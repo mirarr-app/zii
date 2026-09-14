@@ -25,18 +25,29 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
 
 impl DirectoryScanner {
     pub fn new(target_path: &Path) -> anyhow::Result<Self> {
-        let (dir, initial_file) = if target_path.is_dir() {
-            (target_path.to_path_buf(), None)
+        let canonical = target_path.canonicalize().unwrap_or_else(|_| {
+            if target_path.is_relative() {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(target_path)
+            } else {
+                target_path.to_path_buf()
+            }
+        });
+
+        let (dir, initial_file) = if canonical.is_dir() {
+            (canonical, None)
         } else {
-            let parent = target_path
+            let parent = canonical
                 .parent()
+                .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or_else(|| Path::new("."))
                 .to_path_buf();
-            (parent, Some(target_path.canonicalize().unwrap_or_else(|_| target_path.to_path_buf())))
+            (parent, Some(canonical))
         };
 
         let mut scanner = Self {
-            current_dir: dir.clone(),
+            current_dir: dir,
             entries: Vec::new(),
             current_index: 0,
             explicit_files: None,
@@ -65,7 +76,15 @@ impl DirectoryScanner {
         let mut explicit = Vec::new();
 
         for p in paths {
-            let can = p.canonicalize().unwrap_or_else(|_| p.clone());
+            let can = p.canonicalize().unwrap_or_else(|_| {
+                if p.is_relative() {
+                    std::env::current_dir()
+                        .unwrap_or_else(|_| PathBuf::from("."))
+                        .join(p)
+                } else {
+                    p.clone()
+                }
+            });
             if can.is_file() {
                 if let Some(entry) = Self::probe_image(&can) {
                     entries.push(entry);
@@ -75,12 +94,25 @@ impl DirectoryScanner {
         }
 
         if entries.is_empty() {
-            let dir = paths[0].parent().unwrap_or_else(|| Path::new("."));
+            let first_can = paths[0].canonicalize().unwrap_or_else(|_| {
+                if paths[0].is_relative() {
+                    std::env::current_dir()
+                        .unwrap_or_else(|_| PathBuf::from("."))
+                        .join(&paths[0])
+                } else {
+                    paths[0].clone()
+                }
+            });
+            let dir = first_can
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."));
             return Self::new(dir);
         }
 
         let current_dir = explicit[0]
             .parent()
+            .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
 
@@ -376,5 +408,15 @@ mod tests {
         assert_eq!(scanner.entries[0].filename, "sample_1.png");
         assert_eq!(scanner.entries[1].filename, "sample_2.jpg");
         assert!(scanner.explicit_files.is_some());
+    }
+
+    #[test]
+    fn test_bare_filename_relative() {
+        // Test that a path without directory components like "sample_1.png" resolves cleanly
+        let path = Path::new("tests/samples/sample_1.png");
+        let scanner = DirectoryScanner::new(path).unwrap();
+        assert!(!scanner.entries.is_empty());
+        assert!(!scanner.current_dir.as_os_str().is_empty());
+        assert_eq!(scanner.current().unwrap().filename, "sample_1.png");
     }
 }

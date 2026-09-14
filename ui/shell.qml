@@ -68,7 +68,7 @@ ShellRoot {
         id: readyRetry
         interval: 150
         repeat: true
-        running: !root.currentEntry
+        running: !root.initialReadyReceived
         onTriggered: {
             if (!socket.connected) {
                 socket.connected = true;
@@ -87,6 +87,7 @@ ShellRoot {
 
     // State
     property string currentMode: "NORMAL" // "NORMAL" or "EDIT"
+    property bool initialReadyReceived: false
     property var currentEntry: null
     property int currentIndex: 0
     property int totalCount: 0
@@ -103,6 +104,7 @@ ShellRoot {
         if (msg.type === "theme") {
             theme.apply(msg.theme);
         } else if (msg.type === "directory_state") {
+            root.initialReadyReceived = true;
             root.currentIndex = msg.index || 0;
             root.totalCount = msg.total || 0;
             root.currentEntry = msg.current || null;
