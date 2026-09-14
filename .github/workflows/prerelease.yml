@@ -61,6 +61,7 @@ jobs:
           mkdir -p "${ARCHIVE_NAME}"
           cp target/x86_64-unknown-linux-gnu/release/zii "${ARCHIVE_NAME}/"
           cp -r ui "${ARCHIVE_NAME}/"
+          cp -r assets "${ARCHIVE_NAME}/"
           cp zii.desktop "${ARCHIVE_NAME}/"
           cp install.sh "${ARCHIVE_NAME}/"
           cp README.md "${ARCHIVE_NAME}/"

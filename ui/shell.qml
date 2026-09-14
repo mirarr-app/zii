@@ -197,6 +197,43 @@ ShellRoot {
                 }
             }
 
+            // Empty State Display (when no image is loaded)
+            Column {
+                anchors.centerIn: parent
+                spacing: 16
+                visible: !root.currentEntry && root.initialReadyReceived
+                opacity: visible ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 250 } }
+
+                Image {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 96
+                    height: 96
+                    source: "assets/zii.svg"
+                    sourceSize.width: 192
+                    sourceSize.height: 192
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Zii (字 / 視)"
+                    color: theme.brightForeground
+                    font.family: theme.fontFamily
+                    font.pixelSize: 20
+                    font.bold: true
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "No images found in current directory\nPress ? for keyboard shortcuts or open with: zii <path>"
+                    color: theme.darkForeground
+                    font.family: theme.fontFamily
+                    font.pixelSize: 13
+                    horizontalAlignment: Text.AlignHCenter
+                    lineHeight: 1.4
+                }
+            }
+
             // Interactive Crop Overlay
             CropOverlay {
                 id: cropOverlay

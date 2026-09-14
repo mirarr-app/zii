@@ -52,7 +52,16 @@ Rectangle {
                 Row {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 14
+                    spacing: 12
+
+                    Image {
+                        width: 24
+                        height: 24
+                        source: "assets/zii.svg"
+                        sourceSize.width: 48
+                        sourceSize.height: 48
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
 
                     Rectangle {
                         width: modeLabel.implicitWidth + 16
