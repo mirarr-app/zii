@@ -14,20 +14,23 @@ Item {
     signal interactionOccurred()
     signal doubleClicked()
 
+    property bool userInteracted: false
+
     clip: true
 
     onSourceChanged: {
+        userInteracted = false;
         resetView();
     }
 
     onWidthChanged: {
-        if (zoomFactor === fitScale()) {
+        if (!userInteracted && width > 0 && height > 0) {
             resetView();
         }
     }
 
     onHeightChanged: {
-        if (zoomFactor === fitScale()) {
+        if (!userInteracted && width > 0 && height > 0) {
             resetView();
         }
     }
@@ -67,6 +70,7 @@ Item {
         var imgX = (focalX - panX) / zoomFactor;
         var imgY = (focalY - panY) / zoomFactor;
 
+        userInteracted = true;
         zoomFactor = newScale;
         panX = focalX - imgX * newScale;
         panY = focalY - imgY * newScale;
@@ -75,6 +79,7 @@ Item {
     }
 
     function panBy(dx, dy) {
+        userInteracted = true;
         panX += dx;
         panY += dy;
         interactionOccurred();
@@ -108,7 +113,9 @@ Item {
                     if (sourceSize.width > 0) {
                         root.imgNaturalWidth = sourceSize.width;
                         root.imgNaturalHeight = sourceSize.height;
-                        root.resetView();
+                        if (!root.userInteracted) {
+                            root.resetView();
+                        }
                     }
                 }
             }

@@ -251,3 +251,16 @@ mod natord {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scan_sample() {
+        let sample = Path::new("tests/samples/sample_2.jpg");
+        let scanner = DirectoryScanner::new(sample).unwrap();
+        assert!(!scanner.entries.is_empty());
+        assert_eq!(scanner.current().unwrap().filename, "sample_2.jpg");
+    }
+}

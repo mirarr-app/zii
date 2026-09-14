@@ -55,6 +55,23 @@ ShellRoot {
                 root.sendIpc({ type: "ready" });
             }
         }
+        Component.onCompleted: {
+            if (connected) {
+                root.sendIpc({ type: "ready" });
+            }
+        }
+    }
+
+    Timer {
+        id: readyRetry
+        interval: 150
+        repeat: true
+        running: !root.currentEntry
+        onTriggered: {
+            if (socket.connected) {
+                root.sendIpc({ type: "ready" });
+            }
+        }
     }
 
     function sendIpc(req) {
@@ -123,6 +140,8 @@ ShellRoot {
     // Main window
     FloatingWindow {
         id: win
+        visible: true
+        fullscreen: root.isFullscreen
         title: (root.currentMode === "EDIT" ? "[EDIT] " : "") + (root.currentEntry ? root.currentEntry.filename : "Zii Photo Viewer")
         implicitWidth: 1280
         implicitHeight: 820
