@@ -110,6 +110,10 @@ ShellRoot {
                 root.activeImagePath = root.currentEntry.path;
                 root.displayWidth = root.currentEntry.width;
                 root.displayHeight = root.currentEntry.height;
+            } else if (!root.currentEntry && root.currentMode === "NORMAL") {
+                root.activeImagePath = "";
+                root.displayWidth = 0;
+                root.displayHeight = 0;
             }
             hud.wake();
         } else if (msg.type === "edit_state") {

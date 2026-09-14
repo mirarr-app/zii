@@ -47,7 +47,16 @@ Item {
     signal cancelSaveDialog()
 
     // Double 'd' sequence tracker for 'dd' delete in Normal mode
-    property int lastDTime: 0
+    property bool pendingD: false
+
+    Timer {
+        id: dTimer
+        interval: 600
+        repeat: false
+        onTriggered: {
+            root.pendingD = false;
+        }
+    }
 
     function handleKeyEvent(event) {
         var key = event.key;
@@ -281,19 +290,29 @@ Item {
             return;
         }
 
-        // Deletion: 'dd' (double d) or 'Shift+D' (permanent)
-        if (text === "D" && hasShift) {
+        // Deletion: 'dd' (Vim sequence), 'Shift+D' (permanent), or 'Delete' key
+        if ((text === "D" && hasShift) || (key === Qt.Key_Delete && hasShift)) {
+            root.pendingD = false;
+            dTimer.stop();
             root.deleteCurrent(true);
             event.accepted = true;
             return;
         }
+        if (key === Qt.Key_Delete) {
+            root.pendingD = false;
+            dTimer.stop();
+            root.deleteCurrent(false);
+            event.accepted = true;
+            return;
+        }
         if (text === "d") {
-            var now = Date.now();
-            if (now - root.lastDTime < 500) {
+            if (root.pendingD) {
+                root.pendingD = false;
+                dTimer.stop();
                 root.deleteCurrent(false);
-                root.lastDTime = 0;
             } else {
-                root.lastDTime = now;
+                root.pendingD = true;
+                dTimer.restart();
             }
             event.accepted = true;
             return;
