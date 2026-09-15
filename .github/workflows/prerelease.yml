@@ -18,7 +18,7 @@ permissions:
 jobs:
   build-and-prerelease:
     name: Build & Publish Pre-release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository

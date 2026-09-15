@@ -43,6 +43,7 @@ QtObject {
         if (lighterBgVal) {
             root.lighterBackground = lighterBgVal;
             root.surface = lighterBgVal;
+            root.surfaceElevated = Qt.lighter(lighterBgVal, 1.15);
         }
         var fgVal = themeObj.fg || themeObj.foreground;
         if (fgVal) root.foreground = fgVal;

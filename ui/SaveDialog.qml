@@ -80,7 +80,7 @@ Rectangle {
                             height: 18
                             width: 18
                             radius: 4
-                            color: Qt.rgba(255, 255, 255, 0.1)
+                            color: Qt.rgba(1, 1, 1, 0.1)
                             Text {
                                 anchors.centerIn: parent
                                 text: "w"

@@ -95,54 +95,8 @@ impl ThemeManager {
         };
 
         if let Ok(content) = std::fs::read_to_string(&colors_path) {
-            if let Ok(val) = content.parse::<toml::Value>() {
-                let get_str = |keys: &[&str], def: &str| -> String {
-                    for &k in keys {
-                        if let Some(v) = val.get(k).and_then(|v| v.as_str()) {
-                            return v.to_string();
-                        }
-                    }
-                    def.to_string()
-                };
-
-                self.current_theme = OmarchyTheme {
-                    name: theme_name,
-                    background: get_str(&["bg", "background"], &self.current_theme.background),
-                    dark_background: get_str(
-                        &["dark_bg", "dark_background"],
-                        &self.current_theme.dark_background,
-                    ),
-                    darker_background: get_str(
-                        &["darker_bg", "darker_background"],
-                        &self.current_theme.darker_background,
-                    ),
-                    lighter_background: get_str(
-                        &["lighter_bg", "lighter_background"],
-                        &self.current_theme.lighter_background,
-                    ),
-                    foreground: get_str(&["fg", "foreground"], &self.current_theme.foreground),
-                    dark_foreground: get_str(
-                        &["dark_fg", "dark_foreground"],
-                        &self.current_theme.dark_foreground,
-                    ),
-                    light_foreground: get_str(
-                        &["light_fg", "light_foreground"],
-                        &self.current_theme.light_foreground,
-                    ),
-                    bright_foreground: get_str(
-                        &["bright_fg", "bright_foreground"],
-                        &self.current_theme.bright_foreground,
-                    ),
-                    accent: get_str(&["accent"], &self.current_theme.accent),
-                    selection: get_str(&["selection"], &self.current_theme.selection),
-                    muted: get_str(&["muted"], &self.current_theme.muted),
-                    red: get_str(&["red"], &self.current_theme.red),
-                    yellow: get_str(&["yellow"], &self.current_theme.yellow),
-                    green: get_str(&["green"], &self.current_theme.green),
-                    cyan: get_str(&["cyan"], &self.current_theme.cyan),
-                    blue: get_str(&["blue"], &self.current_theme.blue),
-                    magenta: get_str(&["magenta", "purple"], &self.current_theme.magenta),
-                };
+            if let Some(theme) = parse_colors(&content, theme_name, &self.current_theme) {
+                self.current_theme = theme;
             }
         }
     }
@@ -193,12 +147,61 @@ impl ThemeManager {
     }
 }
 
+pub fn parse_colors(content: &str, name: String, fallback: &OmarchyTheme) -> Option<OmarchyTheme> {
+    let val = content.parse::<toml::Value>().ok()?;
+    let get_str = |keys: &[&str], def: &str| -> String {
+        for &k in keys {
+            if let Some(v) = val.get(k).and_then(|v| v.as_str()) {
+                return v.to_string();
+            }
+        }
+        def.to_string()
+    };
+
+    Some(OmarchyTheme {
+        name,
+        background: get_str(&["bg", "background"], &fallback.background),
+        dark_background: get_str(&["dark_bg", "dark_background"], &fallback.dark_background),
+        darker_background: get_str(
+            &["darker_bg", "darker_background"],
+            &fallback.darker_background,
+        ),
+        lighter_background: get_str(
+            &["lighter_bg", "lighter_background"],
+            &fallback.lighter_background,
+        ),
+        foreground: get_str(&["fg", "foreground"], &fallback.foreground),
+        dark_foreground: get_str(&["dark_fg", "dark_foreground"], &fallback.dark_foreground),
+        light_foreground: get_str(
+            &["light_fg", "light_foreground"],
+            &fallback.light_foreground,
+        ),
+        bright_foreground: get_str(
+            &["bright_fg", "bright_foreground"],
+            &fallback.bright_foreground,
+        ),
+        accent: get_str(&["accent"], &fallback.accent),
+        selection: get_str(&["selection"], &fallback.selection),
+        muted: get_str(&["muted"], &fallback.muted),
+        red: get_str(&["red"], &fallback.red),
+        yellow: get_str(&["yellow"], &fallback.yellow),
+        green: get_str(&["green"], &fallback.green),
+        cyan: get_str(&["cyan"], &fallback.cyan),
+        blue: get_str(&["blue"], &fallback.blue),
+        magenta: get_str(&["magenta", "purple"], &fallback.magenta),
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn test_theme_key_resolution() {
-        let toml_str = r##"
+        let fallback = OmarchyTheme::default();
+
+        // Test short / quattro keys
+        let short_toml = r##"
 bg = "#111111"
 dark_bg = "#222222"
 darker_bg = "#333333"
@@ -208,27 +211,41 @@ dark_fg = "#666666"
 light_fg = "#777777"
 bright_fg = "#888888"
 accent = "#999999"
+magenta = "#aaaaaa"
 "##;
-        let val: toml::Value = toml_str.parse().unwrap();
-        let get_str = |keys: &[&str], def: &str| -> String {
-            for &k in keys {
-                if let Some(v) = val.get(k).and_then(|v| v.as_str()) {
-                    return v.to_string();
-                }
-            }
-            def.to_string()
-        };
+        let t1 = parse_colors(short_toml, "Short".to_string(), &fallback).unwrap();
+        assert_eq!(t1.background, "#111111");
+        assert_eq!(t1.dark_background, "#222222");
+        assert_eq!(t1.darker_background, "#333333");
+        assert_eq!(t1.lighter_background, "#444444");
+        assert_eq!(t1.foreground, "#555555");
+        assert_eq!(t1.dark_foreground, "#666666");
+        assert_eq!(t1.light_foreground, "#777777");
+        assert_eq!(t1.bright_foreground, "#888888");
+        assert_eq!(t1.accent, "#999999");
+        assert_eq!(t1.magenta, "#aaaaaa");
 
-        assert_eq!(get_str(&["bg", "background"], ""), "#111111");
-        assert_eq!(get_str(&["dark_bg", "dark_background"], ""), "#222222");
-        assert_eq!(get_str(&["darker_bg", "darker_background"], ""), "#333333");
-        assert_eq!(
-            get_str(&["lighter_bg", "lighter_background"], ""),
-            "#444444"
-        );
-        assert_eq!(get_str(&["fg", "foreground"], ""), "#555555");
-        assert_eq!(get_str(&["dark_fg", "dark_foreground"], ""), "#666666");
-        assert_eq!(get_str(&["light_fg", "light_foreground"], ""), "#777777");
-        assert_eq!(get_str(&["bright_fg", "bright_foreground"], ""), "#888888");
+        // Test legacy / long keys
+        let legacy_toml = r##"
+background = "#121212"
+dark_background = "#232323"
+darker_background = "#343434"
+lighter_background = "#454545"
+foreground = "#565656"
+dark_foreground = "#676767"
+light_foreground = "#787878"
+bright_foreground = "#898989"
+purple = "#bbbbbb"
+"##;
+        let t2 = parse_colors(legacy_toml, "Legacy".to_string(), &fallback).unwrap();
+        assert_eq!(t2.background, "#121212");
+        assert_eq!(t2.dark_background, "#232323");
+        assert_eq!(t2.darker_background, "#343434");
+        assert_eq!(t2.lighter_background, "#454545");
+        assert_eq!(t2.foreground, "#565656");
+        assert_eq!(t2.dark_foreground, "#676767");
+        assert_eq!(t2.light_foreground, "#787878");
+        assert_eq!(t2.bright_foreground, "#898989");
+        assert_eq!(t2.magenta, "#bbbbbb");
     }
 }

@@ -9,7 +9,7 @@
 **Zii** is a high-performance, keyboard-driven photo viewer and non-destructive image editor designed specifically for **Omarchy Linux**. Built with a multithreaded **Rust** core and a fluid **Quickshell** (Qt QML) frontend, it features Vim-style modal navigation and editing, instant trash undo, and real-time Omarchy theme hot-reloading.
 
 <p align="center">
-  <img src="screenshot.png" alt="Zii Photo Viewer and Editor on Omarchy Linux" width="100%" />
+  <img src="assets/screenshot.png" alt="Zii Photo Viewer and Editor on Omarchy Linux" width="100%" />
 </p>
 
 ---
