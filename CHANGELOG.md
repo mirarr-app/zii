@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-15
+
 ### Added
 - Adjustment panel keyboard cycling and stepping using `Tab` / `Shift+Tab` and `Up` / `Down` arrows.
 - Fallback search for UI QML files in standard `XDG_DATA_DIRS` and relative to binary prefix (`../share/zii/ui/shell.qml`).
