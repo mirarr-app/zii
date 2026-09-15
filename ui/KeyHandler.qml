@@ -206,7 +206,8 @@ Item {
                     event.accepted = true;
                     return;
                 }
-                if ((key === Qt.Key_Tab && hasShift) || key === Qt.Key_Up) {
+                // Qt delivers Shift+Tab as Key_Backtab, not Key_Tab + ShiftModifier
+                if (key === Qt.Key_Backtab || (key === Qt.Key_Tab && hasShift) || key === Qt.Key_Up) {
                     root.adjustCycle(-1);
                     event.accepted = true;
                     return;

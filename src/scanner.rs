@@ -92,7 +92,9 @@ impl DirectoryScanner {
                     p.clone()
                 }
             });
-            if can.is_file() {
+            // Only keep explicit files that look like images; otherwise a stray
+            // non-image argument would show up as a 0x0 entry.
+            if can.is_file() && Self::has_supported_extension(&can) {
                 explicit.push(can);
             }
         }
@@ -142,13 +144,8 @@ impl DirectoryScanner {
             if let Ok(read_dir) = std::fs::read_dir(&self.current_dir) {
                 for entry in read_dir.flatten() {
                     let path = entry.path();
-                    if path.is_file() {
-                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                            let lower_ext = ext.to_ascii_lowercase();
-                            if SUPPORTED_EXTENSIONS.contains(&lower_ext.as_str()) {
-                                found_paths.push(path);
-                            }
-                        }
+                    if path.is_file() && Self::has_supported_extension(&path) {
+                        found_paths.push(path);
                     }
                 }
             }
@@ -315,6 +312,13 @@ impl DirectoryScanner {
         Some(removed.path)
     }
 
+    fn has_supported_extension(path: &Path) -> bool {
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| SUPPORTED_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+            .unwrap_or(false)
+    }
+
     fn probe_image(&self, path: &Path, metadata: &std::fs::Metadata) -> Option<ImageEntry> {
         #[cfg(test)]
         self.probe_count.set(self.probe_count.get() + 1);
@@ -456,6 +460,29 @@ mod tests {
         assert_eq!(scanner.entries[0].filename, "sample_1.png");
         assert_eq!(scanner.entries[1].filename, "sample_2.jpg");
         assert!(scanner.explicit_files.is_some());
+    }
+
+    #[test]
+    fn test_from_paths_ignores_non_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let txt = dir.path().join("notes.txt");
+        let png = dir.path().join("pic.png");
+        std::fs::write(&txt, "hello").unwrap();
+        std::fs::copy("tests/samples/sample_1.png", &png).unwrap();
+
+        // Mixed: the .txt is dropped, only the image is kept as an explicit entry.
+        let scanner = DirectoryScanner::from_paths(&[txt.clone(), png.clone()]).unwrap();
+        assert_eq!(scanner.entries.len(), 1);
+        assert_eq!(scanner.entries[0].filename, "pic.png");
+        assert!(scanner.explicit_files.is_some());
+
+        // Only non-images: fall back to scanning the first argument's directory.
+        let other_txt = dir.path().join("more.txt");
+        std::fs::write(&other_txt, "x").unwrap();
+        let scanner = DirectoryScanner::from_paths(&[txt, other_txt]).unwrap();
+        assert!(scanner.explicit_files.is_none());
+        assert_eq!(scanner.entries.len(), 1);
+        assert_eq!(scanner.entries[0].filename, "pic.png");
     }
 
     #[test]

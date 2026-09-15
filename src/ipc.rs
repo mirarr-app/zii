@@ -826,6 +826,7 @@ async fn process_request(
             }
 
             let busy_guard = BusyGuard(editor_busy);
+            let opened_path = path.clone();
             let res = tokio::task::spawn_blocking(move || {
                 let _guard = busy_guard;
                 let mut ed = editor.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -838,6 +839,16 @@ async fn process_request(
             match res {
                 Ok(Ok((preview, w, h))) => {
                     let mut st = state.lock().await;
+                    // If the user navigated away while the image was decoding, the
+                    // editor now holds a stale image; do not enter edit mode.
+                    let still_current = st
+                        .scanner
+                        .current()
+                        .map(|e| e.path == opened_path)
+                        .unwrap_or(false);
+                    if !still_current {
+                        return false;
+                    }
                     st.edit_active = true;
                     send_event_helper(
                         b_tx,

@@ -90,17 +90,23 @@ fn resolve_ui_path() -> PathBuf {
     // g. Iterate XDG_DATA_DIRS (default /usr/local/share:/usr/share) checking <dir>/zii/ui/shell.qml
     let data_dirs = std::env::var("XDG_DATA_DIRS")
         .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
-    for dir in data_dirs.split(':') {
-        if !dir.is_empty() {
-            let candidate = Path::new(dir).join("zii/ui/shell.qml");
-            if candidate.exists() {
-                return candidate.canonicalize().unwrap_or(candidate);
-            }
-        }
+    if let Some(found) = find_ui_in_data_dirs(&data_dirs) {
+        return found;
     }
 
     // h. compile-time development fallback
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/shell.qml"))
+}
+
+/// Walk a colon-separated XDG_DATA_DIRS list and return the first
+/// `<dir>/zii/ui/shell.qml` that exists.
+fn find_ui_in_data_dirs(data_dirs: &str) -> Option<PathBuf> {
+    data_dirs
+        .split(':')
+        .filter(|dir| !dir.is_empty())
+        .map(|dir| Path::new(dir).join("zii/ui/shell.qml"))
+        .find(|candidate| candidate.exists())
+        .map(|candidate| candidate.canonicalize().unwrap_or(candidate))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -360,26 +366,30 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_ui_path_xdg_data_dirs() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let temp_dir = tempfile::tempdir().unwrap();
-        let qml_dir = temp_dir.path().join("zii/ui");
+    fn test_find_ui_in_data_dirs() {
+        // Second entry has the UI, first is an empty dir, plus an empty segment
+        // and a nonexistent dir to make sure they are skipped.
+        let empty_share = tempfile::tempdir().unwrap();
+        let good_share = tempfile::tempdir().unwrap();
+        let qml_dir = good_share.path().join("zii/ui");
         std::fs::create_dir_all(&qml_dir).unwrap();
         let qml_path = qml_dir.join("shell.qml");
         std::fs::write(&qml_path, "import QtQuick\nItem {}\n").unwrap();
 
-        let orig_xdg = std::env::var("XDG_DATA_DIRS").ok();
-        std::env::set_var("XDG_DATA_DIRS", temp_dir.path().to_string_lossy().as_ref());
-        std::env::remove_var("ZII_UI_PATH");
+        let data_dirs = format!(
+            "{}::/nonexistent/share:{}",
+            empty_share.path().display(),
+            good_share.path().display()
+        );
+        let found = find_ui_in_data_dirs(&data_dirs).expect("should find UI in second dir");
+        assert_eq!(found, qml_path.canonicalize().unwrap());
 
-        let path = resolve_ui_path();
-        assert!(path.ends_with("ui/shell.qml"));
-
-        if let Some(orig) = orig_xdg {
-            std::env::set_var("XDG_DATA_DIRS", orig);
-        } else {
-            std::env::remove_var("XDG_DATA_DIRS");
-        }
+        // Nothing matches -> None, so resolve_ui_path falls through to the next step.
+        let none = find_ui_in_data_dirs(&format!(
+            "{}:/nonexistent/share",
+            empty_share.path().display()
+        ));
+        assert!(none.is_none());
     }
 
     #[test]
