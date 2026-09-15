@@ -360,6 +360,29 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_ui_path_xdg_data_dirs() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let qml_dir = temp_dir.path().join("zii/ui");
+        std::fs::create_dir_all(&qml_dir).unwrap();
+        let qml_path = qml_dir.join("shell.qml");
+        std::fs::write(&qml_path, "import QtQuick\nItem {}\n").unwrap();
+
+        let orig_xdg = std::env::var("XDG_DATA_DIRS").ok();
+        std::env::set_var("XDG_DATA_DIRS", temp_dir.path().to_string_lossy().as_ref());
+        std::env::remove_var("ZII_UI_PATH");
+
+        let path = resolve_ui_path();
+        assert!(path.ends_with("ui/shell.qml"));
+
+        if let Some(orig) = orig_xdg {
+            std::env::set_var("XDG_DATA_DIRS", orig);
+        } else {
+            std::env::remove_var("XDG_DATA_DIRS");
+        }
+    }
+
+    #[test]
     fn test_parse_cli_args_help() {
         let args = vec!["zii", "--help"];
         let cfg = parse_cli_args(args);

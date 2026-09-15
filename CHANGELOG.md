@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Moved `screenshot.png` into `assets/screenshot.png`.
-- Updated GitHub Actions pre-release and release runners from `ubuntu-22.04` to `ubuntu-latest`.
+- Updated GitHub Actions pre-release and release runners from `ubuntu-22.04` to `ubuntu-24.04`.
 - Standardized `install.sh` to check for root privileges when installing to system-wide paths and ensure temporary directories are reliably cleaned up on exit.
 
 ### Fixed

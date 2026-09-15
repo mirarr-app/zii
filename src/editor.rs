@@ -8,7 +8,9 @@ pub const UNDO_BUDGET_BYTES: usize = 768 * 1024 * 1024;
 
 pub fn image_bytes(img: &DynamicImage) -> usize {
     let (w, h) = img.dimensions();
-    (w as usize) * (h as usize) * (img.color().bytes_per_pixel() as usize)
+    (w as usize)
+        .saturating_mul(h as usize)
+        .saturating_mul(img.color().bytes_per_pixel() as usize)
 }
 
 #[allow(dead_code)]
@@ -123,7 +125,8 @@ pub fn neutralize_orientation_in_exif(blob: &mut [u8]) {
             entry_offset += 12;
         }
 
-        ifd_offset = match read_u32(blob, entry_offset) {
+        let next_ifd_pos = ifd_offset + 2 + num_entries * 12;
+        ifd_offset = match read_u32(blob, next_ifd_pos) {
             Some(next) => next as usize,
             None => break,
         };
@@ -255,6 +258,9 @@ impl ImageEditor {
     }
 
     pub fn rotate(&mut self, degrees: i32) -> anyhow::Result<PathBuf> {
+        if self.current_image.is_none() {
+            anyhow::bail!("No image currently loaded in editor");
+        }
         let norm = degrees.rem_euclid(360);
         if norm == 0 || (norm != 90 && norm != 180 && norm != 270) {
             let current_preview = self

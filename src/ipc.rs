@@ -1128,10 +1128,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let socket_path = temp_dir.path().join("test_zii.sock");
 
-        let sample_path = PathBuf::from("tests/samples/sample_1.png")
-            .canonicalize()
-            .unwrap();
-        let scanner = DirectoryScanner::from_paths(&[sample_path]).unwrap();
+        let scanner = DirectoryScanner::new(Path::new("tests/samples")).unwrap();
         let trash = TrashManager::new();
         let editor = Arc::new(std::sync::Mutex::new(ImageEditor::new()));
         let editor_busy = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1230,10 +1227,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let socket_path = temp_dir.path().join("test_busy.sock");
 
-        let sample_path = PathBuf::from("tests/samples/sample_1.png")
-            .canonicalize()
-            .unwrap();
-        let scanner = DirectoryScanner::from_paths(&[sample_path]).unwrap();
+        let scanner = DirectoryScanner::new(Path::new("tests/samples")).unwrap();
         let trash = TrashManager::new();
         let editor = Arc::new(std::sync::Mutex::new(ImageEditor::new()));
         let editor_busy = Arc::new(std::sync::atomic::AtomicBool::new(true)); // Start busy!
