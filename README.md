@@ -116,7 +116,8 @@ curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | ba
 | `h` | Flip Horizontal |
 | `v` | Flip Vertical |
 | `a` | Toggle Adjustments panel (Brightness, Contrast, Saturation) |
-| `[` / `]` | Decrease / increase adjustment value |
+| `Tab` / `Shift+Tab` | Cycle active adjustment slider (also `Down` / `Up`) |
+| `[` / `]` | Decrease / increase active adjustment slider |
 | `u` | Undo edit operation |
 | `Ctrl+r` | Redo edit operation |
 | `w` | Overwrite original file directly (95% high-quality JPEG) |
@@ -180,7 +181,7 @@ cargo build --release
 ./install.sh --user
 
 # Or install system-wide (requires sudo)
-sudo ./install.sh
+sudo ./install.sh --system
 ```
 
 ---

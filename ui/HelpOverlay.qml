@@ -344,7 +344,8 @@ Rectangle {
         { keys: ["Arrows"], desc: "Move crop box (in Crop mode)" },
         { keys: ["Shift+Arr"], desc: "Resize crop box (enforces aspect ratio)" },
         { keys: ["Enter"], desc: "Apply crop to image" },
-        { keys: ["[", "]"], desc: "Decrease / increase slider value" },
+        { keys: ["Tab", "S-Tab"], desc: "Cycle active adjustment slider (also ↓ / ↑)" },
+        { keys: ["[", "]"], desc: "Decrease / increase active slider value" },
         { keys: ["Handles"], desc: "Drag 8 corner/edge resize handles" }
     ]
 

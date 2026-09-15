@@ -12,6 +12,16 @@ MODE="local"       # local, release, prerelease, source
 USE_USER=true
 PREFIX="$HOME/.local"
 
+CLEANUP_DIRS=()
+cleanup_temp_dirs() {
+    for dir in "${CLEANUP_DIRS[@]}"; do
+        if [ -d "$dir" ]; then
+            rm -rf "$dir"
+        fi
+    done
+}
+trap cleanup_temp_dirs EXIT
+
 # Detect if piped from curl or run directly outside of a repo/archive
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
 if [ -z "$SCRIPT_DIR" ] || [ ! -f "$SCRIPT_DIR/zii.desktop" ]; then
@@ -61,6 +71,15 @@ done
 
 if [ "$USE_USER" = false ] && [ "$PREFIX" = "$HOME/.local" ]; then
     PREFIX="/usr/local"
+fi
+
+# Check root permissions if installing system-wide or to a prefix not under $HOME
+if [ "$USE_USER" = false ] || [ -z "$HOME" ] || [[ "$PREFIX" != "$HOME"/* && "$PREFIX" != "$HOME" ]]; then
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "==> Error: Installing to $PREFIX requires root privileges." >&2
+        echo "    Please rerun with: sudo ./install.sh --system" >&2
+        exit 1
+    fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -183,7 +202,7 @@ install_from_github() {
     local is_prerelease="$1"
     local temp_dir
     temp_dir="$(mktemp -d -t zii_install_XXXXXX)"
-    trap 'rm -rf "$temp_dir"' EXIT
+    CLEANUP_DIRS+=("$temp_dir")
 
     echo "==> Fetching latest $([ "$is_prerelease" = true ] && echo "pre-release" || echo "release") for Omarchy Linux..."
 
@@ -246,7 +265,7 @@ install_from_source() {
 
     local temp_dir
     temp_dir="$(mktemp -d -t zii_source_XXXXXX)"
-    trap 'rm -rf "$temp_dir"' EXIT
+    CLEANUP_DIRS+=("$temp_dir")
 
     echo "==> Cloning Zii from https://github.com/$REPO.git..."
     git clone --depth 1 "https://github.com/$REPO.git" "$temp_dir"

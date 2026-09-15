@@ -118,23 +118,9 @@ pub async fn copy_to_clipboard(path: &Path, path_only: bool) -> Result<String, S
                 Err(format!("wl-copy exited with status {}", status))
             }
         } else {
-            let ext = canonical
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
+            let ext = canonical.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-            let mime = match ext.as_str() {
-                "png" => "image/png",
-                "jpg" | "jpeg" => "image/jpeg",
-                "webp" => "image/webp",
-                "gif" => "image/gif",
-                "bmp" => "image/bmp",
-                "tiff" | "tif" => "image/tiff",
-                "svg" => "image/svg+xml",
-                "ico" => "image/x-icon",
-                _ => "application/octet-stream",
-            };
+            let mime = mime_for_extension(ext);
 
             let bytes = tokio::fs::read(&canonical)
                 .await
@@ -171,51 +157,65 @@ pub async fn copy_to_clipboard(path: &Path, path_only: bool) -> Result<String, S
     .map_err(|_| "Clipboard copy timed out".to_string())?
 }
 
+pub fn mime_for_extension(ext: &str) -> &'static str {
+    match ext.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "tiff" | "tif" => "image/tiff",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        _ => "application/octet-stream",
+    }
+}
+
+async fn run_cmd_timeout(cmd: &str, args: &[&str]) -> Result<bool, String> {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(cmd).args(args).status(),
+    )
+    .await
+    {
+        Ok(Ok(status)) => Ok(status.success()),
+        Ok(Err(e)) => Err(format!("{cmd} failed to execute: {e}")),
+        Err(_) => Err(format!("{cmd} timed out after 5 seconds")),
+    }
+}
+
 pub async fn set_wallpaper(path: &Path) -> Result<String, String> {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let path_str = canonical.to_string_lossy().to_string();
 
+    let mut errors = Vec::new();
+
     // 1. Try omarchy-theme-bg-set
-    if let Ok(status) = tokio::process::Command::new("omarchy-theme-bg-set")
-        .arg(&path_str)
-        .status()
-        .await
-    {
-        if status.success() {
-            return Ok("omarchy-theme-bg-set".to_string());
-        }
+    match run_cmd_timeout("omarchy-theme-bg-set", &[&path_str]).await {
+        Ok(true) => return Ok("omarchy-theme-bg-set".to_string()),
+        Ok(false) => errors.push("omarchy-theme-bg-set returned non-zero exit status".to_string()),
+        Err(e) => errors.push(e),
     }
 
     // 2. Fallback to swww img
-    if let Ok(status) = tokio::process::Command::new("swww")
-        .arg("img")
-        .arg(&path_str)
-        .status()
-        .await
-    {
-        if status.success() {
-            return Ok("swww".to_string());
-        }
+    match run_cmd_timeout("swww", &["img", &path_str]).await {
+        Ok(true) => return Ok("swww".to_string()),
+        Ok(false) => errors.push("swww returned non-zero exit status".to_string()),
+        Err(e) => errors.push(e),
     }
 
     // 3. Fallback to hyprctl hyprpaper
     let hypr_arg = format!(",{}", path_str);
-    if let Ok(status) = tokio::process::Command::new("hyprctl")
-        .arg("hyprpaper")
-        .arg("wallpaper")
-        .arg(&hypr_arg)
-        .status()
-        .await
-    {
-        if status.success() {
-            return Ok("hyprctl hyprpaper".to_string());
-        }
+    match run_cmd_timeout("hyprctl", &["hyprpaper", "wallpaper", &hypr_arg]).await {
+        Ok(true) => return Ok("hyprctl hyprpaper".to_string()),
+        Ok(false) => errors.push("hyprctl returned non-zero exit status".to_string()),
+        Err(e) => errors.push(e),
     }
 
-    Err(
-        "Could not set wallpaper: neither omarchy-theme-bg-set, swww, nor hyprpaper succeeded"
-            .to_string(),
-    )
+    Err(format!(
+        "Could not set wallpaper: neither omarchy-theme-bg-set, swww, nor hyprpaper succeeded: {}",
+        errors.join("; ")
+    ))
 }
 
 pub async fn run_ipc_server(
@@ -230,6 +230,20 @@ pub async fn run_ipc_server(
     }
 
     let listener = UnixListener::bind(&socket_path)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) =
+            std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
+        {
+            eprintln!(
+                "Warning: Failed to set permissions on socket {}: {}",
+                socket_path.display(),
+                e
+            );
+        }
+    }
 
     // Channel for broadcasting server events to connected client(s)
     let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<String>(64);
@@ -896,19 +910,44 @@ mod tests {
         assert!(serialized.contains("6000 × 4000 (24.0 MP)"));
     }
 
+    #[test]
+    fn test_mime_for_extension() {
+        assert_eq!(mime_for_extension("png"), "image/png");
+        assert_eq!(mime_for_extension("PNG"), "image/png");
+        assert_eq!(mime_for_extension("jpg"), "image/jpeg");
+        assert_eq!(mime_for_extension("jpeg"), "image/jpeg");
+        assert_eq!(mime_for_extension("JPG"), "image/jpeg");
+        assert_eq!(mime_for_extension("webp"), "image/webp");
+        assert_eq!(mime_for_extension("gif"), "image/gif");
+        assert_eq!(mime_for_extension("bmp"), "image/bmp");
+        assert_eq!(mime_for_extension("tif"), "image/tiff");
+        assert_eq!(mime_for_extension("tiff"), "image/tiff");
+        assert_eq!(mime_for_extension("svg"), "image/svg+xml");
+        assert_eq!(mime_for_extension("ico"), "image/x-icon");
+        assert_eq!(mime_for_extension("txt"), "application/octet-stream");
+        assert_eq!(mime_for_extension(""), "application/octet-stream");
+        assert_eq!(mime_for_extension("unknown"), "application/octet-stream");
+    }
+
     #[tokio::test]
+    #[ignore = "requires desktop environment; run with ZII_RUN_DESKTOP_TESTS=1"]
     async fn test_set_wallpaper_nonexistent() {
+        if std::env::var("ZII_RUN_DESKTOP_TESTS").as_deref() != Ok("1") {
+            return;
+        }
         let fake_path = Path::new("/nonexistent/file/path.jpg");
         let res = set_wallpaper(fake_path).await;
-        // Should handle missing tools or missing file gracefully by returning Err or Ok
         assert!(res.is_err() || res.is_ok());
     }
 
     #[tokio::test]
+    #[ignore = "requires Wayland compositor and modifies clipboard; run with ZII_RUN_DESKTOP_TESTS=1"]
     async fn test_copy_to_clipboard_path() {
+        if std::env::var("ZII_RUN_DESKTOP_TESTS").as_deref() != Ok("1") {
+            return;
+        }
         let sample = Path::new("tests/samples/sample_1.png");
         let res = copy_to_clipboard(sample, true).await;
-        // In test environment wl-copy may or may not succeed depending on Wayland session
         assert!(res.is_err() || res.is_ok());
     }
 }

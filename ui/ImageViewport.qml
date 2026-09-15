@@ -7,6 +7,10 @@ Item {
     property string source: ""
     property real imgNaturalWidth: 0
     property real imgNaturalHeight: 0
+    property real loadedWidth: 0
+    property real loadedHeight: 0
+    readonly property real effectiveNaturalWidth: naturalW()
+    readonly property real effectiveNaturalHeight: naturalH()
     property real zoomFactor: 1.0
     property real panX: 0
     property real panY: 0
@@ -32,6 +36,8 @@ Item {
     clip: true
 
     onSourceChanged: {
+        root.loadedWidth = 0;
+        root.loadedHeight = 0;
         if (!isEditing) {
             userInteracted = false;
             if (animImage) animImage.paused = false;
@@ -69,13 +75,17 @@ Item {
     }
 
     function naturalW() {
+        if (imgNaturalWidth > 0) return imgNaturalWidth;
+        if (loadedWidth > 0) return loadedWidth;
         var sw = activeSourceWidth();
-        return imgNaturalWidth > 0 ? imgNaturalWidth : (sw > 0 ? sw : 0);
+        return sw > 0 ? sw : 0;
     }
 
     function naturalH() {
+        if (imgNaturalHeight > 0) return imgNaturalHeight;
+        if (loadedHeight > 0) return loadedHeight;
         var sh = activeSourceHeight();
-        return imgNaturalHeight > 0 ? imgNaturalHeight : (sh > 0 ? sh : 0);
+        return sh > 0 ? sh : 0;
     }
 
     function clampPanX(val, curW) {
@@ -197,8 +207,8 @@ Item {
             onStatusChanged: {
                 if (status === Image.Ready) {
                     if (sourceSize.width > 0) {
-                        root.imgNaturalWidth = sourceSize.width;
-                        root.imgNaturalHeight = sourceSize.height;
+                        root.loadedWidth = sourceSize.width;
+                        root.loadedHeight = sourceSize.height;
                         if (!root.isEditing && !root.userInteracted) {
                             root.resetView();
                         }
@@ -223,8 +233,8 @@ Item {
             onStatusChanged: {
                 if (status === AnimatedImage.Ready) {
                     if (sourceSize.width > 0) {
-                        root.imgNaturalWidth = sourceSize.width;
-                        root.imgNaturalHeight = sourceSize.height;
+                        root.loadedWidth = sourceSize.width;
+                        root.loadedHeight = sourceSize.height;
                         if (!root.isEditing && !root.userInteracted) {
                             root.resetView();
                         }

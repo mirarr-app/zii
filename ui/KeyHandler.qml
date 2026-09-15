@@ -45,6 +45,7 @@ Item {
     signal flipV()
     signal toggleAdjust()
     signal adjustStep(int delta)
+    signal adjustCycle(int dir)
     signal undo()
     signal redo()
     signal saveOverwrite()
@@ -193,7 +194,7 @@ Item {
                 }
             }
 
-            // Adjustments panel bracket keys [ and ]
+            // Adjustments panel bracket keys [ and ], Tab / Down next, Shift+Tab / Up prev
             if (root.adjustActive) {
                 if (text === "[") {
                     root.adjustStep(-5);
@@ -202,6 +203,16 @@ Item {
                 }
                 if (text === "]") {
                     root.adjustStep(5);
+                    event.accepted = true;
+                    return;
+                }
+                if ((key === Qt.Key_Tab && hasShift) || key === Qt.Key_Up) {
+                    root.adjustCycle(-1);
+                    event.accepted = true;
+                    return;
+                }
+                if (key === Qt.Key_Tab || key === Qt.Key_Down) {
+                    root.adjustCycle(1);
                     event.accepted = true;
                     return;
                 }

@@ -176,7 +176,7 @@ ShellRoot {
                 anchors.fill: parent
                 hoverEnabled: true
                 propagateComposedEvents: true
-                onPositionChanged: {
+                onPositionChanged: mouse => {
                     hud.wake();
                     mouse.accepted = false;
                 }
@@ -239,8 +239,8 @@ ShellRoot {
                 id: cropOverlay
                 anchors.fill: parent
                 theme: theme
-                imgNaturalWidth: canvas.imgNaturalWidth
-                imgNaturalHeight: canvas.imgNaturalHeight
+                imgNaturalWidth: canvas.effectiveNaturalWidth
+                imgNaturalHeight: canvas.effectiveNaturalHeight
                 panX: canvas.panX
                 panY: canvas.panY
                 zoomFactor: canvas.zoomFactor
@@ -506,7 +506,10 @@ ShellRoot {
                     adjPanel.active = !adjPanel.active;
                 }
                 onAdjustStep: delta => {
-                    adjPanel.stepBrightness(delta);
+                    adjPanel.stepActive(delta);
+                }
+                onAdjustCycle: dir => {
+                    adjPanel.cycleActive(dir);
                 }
                 onUndo: {
                     root.sendIpc({ type: "edit_undo" });

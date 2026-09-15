@@ -248,22 +248,22 @@ Item {
         // Horizontal 1/3
         Rectangle {
             x: 0; y: parent.height / 3; width: parent.width; height: 1
-            color: Qt.rgba(255, 255, 255, 0.3)
+            color: Qt.rgba(1, 1, 1, 0.3)
         }
         // Horizontal 2/3
         Rectangle {
             x: 0; y: parent.height * 2 / 3; width: parent.width; height: 1
-            color: Qt.rgba(255, 255, 255, 0.3)
+            color: Qt.rgba(1, 1, 1, 0.3)
         }
         // Vertical 1/3
         Rectangle {
             x: parent.width / 3; y: 0; width: 1; height: parent.height
-            color: Qt.rgba(255, 255, 255, 0.3)
+            color: Qt.rgba(1, 1, 1, 0.3)
         }
         // Vertical 2/3
         Rectangle {
             x: parent.width * 2 / 3; y: 0; width: 1; height: parent.height
-            color: Qt.rgba(255, 255, 255, 0.3)
+            color: Qt.rgba(1, 1, 1, 0.3)
         }
 
         // Central drag area to move the entire crop box

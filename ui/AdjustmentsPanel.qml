@@ -8,6 +8,7 @@ Rectangle {
     property int brightness: 0
     property real contrast: 0.0 // -100 to 100
     property int saturation: 0  // -100 to 100
+    property int activeSlider: 0 // 0: brightness, 1: contrast, 2: saturation
 
     signal adjustmentsApplied(int brightness, real contrast, int saturation)
     signal closed()
@@ -15,6 +16,7 @@ Rectangle {
     visible: active
     onActiveChanged: {
         if (active) {
+            root.activeSlider = 0;
             root.brightness = 0;
             root.contrast = 0;
             root.saturation = 0;
@@ -71,9 +73,10 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Brightness"
-                    color: theme.lightForeground
+                    color: root.activeSlider === 0 ? theme.accent : theme.lightForeground
                     font.family: theme.fontFamily
                     font.pixelSize: 11
+                    font.bold: root.activeSlider === 0
                 }
                 Text {
                     anchors.right: parent.right
@@ -143,9 +146,10 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Contrast"
-                    color: theme.lightForeground
+                    color: root.activeSlider === 1 ? theme.accent : theme.lightForeground
                     font.family: theme.fontFamily
                     font.pixelSize: 11
+                    font.bold: root.activeSlider === 1
                 }
                 Text {
                     anchors.right: parent.right
@@ -215,9 +219,10 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Saturation"
-                    color: theme.lightForeground
+                    color: root.activeSlider === 2 ? theme.accent : theme.lightForeground
                     font.family: theme.fontFamily
                     font.pixelSize: 11
+                    font.bold: root.activeSlider === 2
                 }
                 Text {
                     anchors.right: parent.right
@@ -330,5 +335,21 @@ Rectangle {
     function stepSaturation(delta) {
         root.saturation = Math.max(-100, Math.min(100, root.saturation + delta));
         applyDebounce.restart();
+    }
+
+    function stepActive(delta) {
+        if (root.activeSlider === 0) {
+            root.stepBrightness(delta);
+        } else if (root.activeSlider === 1) {
+            root.stepContrast(delta);
+        } else if (root.activeSlider === 2) {
+            root.stepSaturation(delta);
+        }
+    }
+
+    function cycleActive(dir) {
+        var next = (root.activeSlider + dir) % 3;
+        if (next < 0) next += 3;
+        root.activeSlider = next;
     }
 }

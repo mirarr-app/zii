@@ -7,6 +7,7 @@ mod trash;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::{mpsc, Mutex};
 
 use editor::ImageEditor;
@@ -62,7 +63,13 @@ fn resolve_ui_path() -> PathBuf {
         return exe_child_ui.canonicalize().unwrap_or(exe_child_ui);
     }
 
-    // e. ~/.local/share/zii/ui/shell.qml
+    // e. exe_dir/../share/zii/ui/shell.qml (covers any PREFIX)
+    let exe_share_ui = exe_dir.join("../share/zii/ui/shell.qml");
+    if exe_share_ui.exists() {
+        return exe_share_ui.canonicalize().unwrap_or(exe_share_ui);
+    }
+
+    // f. ~/.local/share/zii/ui/shell.qml
     let local_share_ui = {
         let data_home = std::env::var("XDG_DATA_HOME")
             .map(PathBuf::from)
@@ -80,15 +87,19 @@ fn resolve_ui_path() -> PathBuf {
         return local_share_ui.canonicalize().unwrap_or(local_share_ui);
     }
 
-    // f. /usr/share/zii/ui/shell.qml
-    let usr_share_ui = Path::new("/usr/share/zii/ui/shell.qml");
-    if usr_share_ui.exists() {
-        return usr_share_ui
-            .canonicalize()
-            .unwrap_or_else(|_| usr_share_ui.to_path_buf());
+    // g. Iterate XDG_DATA_DIRS (default /usr/local/share:/usr/share) checking <dir>/zii/ui/shell.qml
+    let data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    for dir in data_dirs.split(':') {
+        if !dir.is_empty() {
+            let candidate = Path::new(dir).join("zii/ui/shell.qml");
+            if candidate.exists() {
+                return candidate.canonicalize().unwrap_or(candidate);
+            }
+        }
     }
 
-    // g. compile-time development fallback
+    // h. compile-time development fallback
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/shell.qml"))
 }
 
@@ -136,10 +147,12 @@ where
 }
 
 fn print_help() {
-    println!(
-        r#"Zii 0.1.0 - Fast, minimalist Wayland photo viewer & editor for Omarchy
-
-USAGE:
+    print!(
+        "Zii {} - Fast, minimalist Wayland photo viewer & editor for Omarchy\n\n",
+        env!("CARGO_PKG_VERSION")
+    );
+    print!(
+        r#"USAGE:
     zii [OPTIONS] [PATH]...
 
 ARGS:
@@ -177,6 +190,7 @@ KEYBINDINGS (Edit Mode):
     r / R               Rotate 90° clockwise / counter-clockwise
     h / v               Flip horizontal / vertical
     a                   Adjustments panel (Brightness / Contrast / Saturation)
+    Tab / Shift+Tab     Cycle active adjustment slider (also Down / Up)
     [ / ]               Decrease / increase active adjustment slider
     u / Ctrl+r          Undo / Redo edit step
     w                   Save and overwrite original
@@ -186,13 +200,20 @@ KEYBINDINGS (Edit Mode):
     );
 }
 
+async fn cleanup_app(socket_path: &Path, app_state: &Arc<Mutex<AppState>>) {
+    let _ = std::fs::remove_file(socket_path);
+    let st = app_state.lock().await;
+    st.editor.cleanup();
+    st.trash.cleanup();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let cli = parse_cli_args(&args);
 
     if cli.show_version {
-        println!("zii 0.1.0");
+        println!("zii {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
 
@@ -256,22 +277,34 @@ async fn main() -> anyhow::Result<()> {
         qs_cmd.env("ZII_FULLSCREEN", "1");
     }
 
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sighup = signal(SignalKind::hangup())?;
+
     let mut qs_child = match qs_cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
             eprintln!("Failed to spawn quickshell: {:?}", e);
-            let _ = std::fs::remove_file(&socket_path);
-            let st = app_state.lock().await;
-            st.editor.cleanup();
-            st.trash.cleanup();
+            cleanup_app(&socket_path, &app_state).await;
             return Err(e.into());
         }
     };
 
-    // Wait for either quickshell to terminate or shutdown_rx from IPC
+    // Wait for quickshell, shutdown_rx from IPC, or OS signals
     tokio::select! {
         _ = shutdown_rx.recv() => {
             println!("Received shutdown signal from UI.");
+            let _ = qs_child.kill().await;
+        }
+        _ = tokio::signal::ctrl_c() => {
+            println!("Received SIGINT (Ctrl+C).");
+            let _ = qs_child.kill().await;
+        }
+        _ = sigterm.recv() => {
+            println!("Received SIGTERM.");
+            let _ = qs_child.kill().await;
+        }
+        _ = sighup.recv() => {
+            println!("Received SIGHUP.");
             let _ = qs_child.kill().await;
         }
         status = qs_child.wait() => {
@@ -283,12 +316,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Cleanup socket, preview cache, and trash backup
-    let _ = std::fs::remove_file(&socket_path);
-    {
-        let st = app_state.lock().await;
-        st.editor.cleanup();
-        st.trash.cleanup();
-    }
+    cleanup_app(&socket_path, &app_state).await;
     println!("Zii closed cleanly.");
 
     Ok(())
@@ -297,6 +325,20 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    static ENV_LOCK: StdMutex<()> = StdMutex::new(());
+
+    #[test]
+    fn test_resolve_ui_path_env_wins() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let temp_path = temp.path().to_path_buf();
+        std::env::set_var("ZII_UI_PATH", &temp_path);
+        let resolved = resolve_ui_path();
+        std::env::remove_var("ZII_UI_PATH");
+        assert_eq!(resolved, temp_path.canonicalize().unwrap_or(temp_path));
+    }
 
     #[test]
     fn test_socket_path() {
@@ -308,6 +350,8 @@ mod tests {
 
     #[test]
     fn test_resolve_ui_path_fallback() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("ZII_UI_PATH");
         let path = resolve_ui_path();
         assert!(path.ends_with("ui/shell.qml"));
     }
