@@ -47,7 +47,12 @@ impl TrashManager {
             .backup_dir
             .join(format!("{}_{}", uuid_timestamp(), filename));
 
-        let _ = std::fs::copy(&canon, &backup_path);
+        std::fs::copy(&canon, &backup_path).with_context(|| {
+            format!(
+                "Failed to create temporary backup copy at {:?}",
+                backup_path
+            )
+        })?;
 
         // Move to FreeDesktop trash
         trash::delete(&canon).with_context(|| format!("Failed to move {:?} to trash", canon))?;
@@ -61,12 +66,16 @@ impl TrashManager {
     }
 
     /// Restore the most recently trashed file back to its original location
+    /// Note: The file also remains in the FreeDesktop trash when restored via backup copy.
+    /// TODO: Use `trash::os_limited::restore_all` as the proper fix when supported.
     pub fn restore_last(&mut self) -> anyhow::Result<Option<PathBuf>> {
         if let Some(item) = self.history.pop() {
             if let Some(backup) = item.temporary_backup {
                 if backup.exists() {
-                    std::fs::copy(&backup, &item.original_path)?;
-                    let _ = std::fs::remove_file(backup);
+                    if std::fs::rename(&backup, &item.original_path).is_err() {
+                        std::fs::copy(&backup, &item.original_path)?;
+                        let _ = std::fs::remove_file(backup);
+                    }
                     return Ok(Some(item.original_path));
                 }
             }

@@ -1,6 +1,8 @@
 use notify::Watcher;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageEntry {
@@ -17,6 +19,9 @@ pub struct DirectoryScanner {
     pub entries: Vec<ImageEntry>,
     pub current_index: usize,
     pub explicit_files: Option<Vec<PathBuf>>,
+    pub probe_cache: HashMap<PathBuf, (SystemTime, u64, ImageEntry)>,
+    #[cfg(test)]
+    pub probe_count: std::cell::Cell<usize>,
 }
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
@@ -51,6 +56,9 @@ impl DirectoryScanner {
             entries: Vec::new(),
             current_index: 0,
             explicit_files: None,
+            probe_cache: HashMap::new(),
+            #[cfg(test)]
+            probe_count: std::cell::Cell::new(0),
         };
 
         scanner.rescan()?;
@@ -72,7 +80,6 @@ impl DirectoryScanner {
             return Self::new(&paths[0]);
         }
 
-        let mut entries = Vec::new();
         let mut explicit = Vec::new();
 
         for p in paths {
@@ -86,14 +93,11 @@ impl DirectoryScanner {
                 }
             });
             if can.is_file() {
-                if let Some(entry) = Self::probe_image(&can) {
-                    entries.push(entry);
-                    explicit.push(can);
-                }
+                explicit.push(can);
             }
         }
 
-        if entries.is_empty() {
+        if explicit.is_empty() {
             let first_can = paths[0].canonicalize().unwrap_or_else(|_| {
                 if paths[0].is_relative() {
                     std::env::current_dir()
@@ -116,21 +120,23 @@ impl DirectoryScanner {
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
 
-        Ok(Self {
+        let mut scanner = Self {
             current_dir,
-            entries,
+            entries: Vec::new(),
             current_index: 0,
             explicit_files: Some(explicit),
-        })
+            probe_cache: HashMap::new(),
+            #[cfg(test)]
+            probe_count: std::cell::Cell::new(0),
+        };
+
+        scanner.rescan()?;
+        Ok(scanner)
     }
 
     pub fn rescan(&mut self) -> anyhow::Result<()> {
-        if let Some(ref explicit) = self.explicit_files {
-            self.entries = explicit
-                .iter()
-                .filter(|p| p.exists() && p.is_file())
-                .filter_map(|p| Self::probe_image(p))
-                .collect();
+        let candidate_paths: Vec<PathBuf> = if let Some(ref explicit) = self.explicit_files {
+            explicit.clone()
         } else {
             let mut found_paths = Vec::new();
             if let Ok(read_dir) = std::fs::read_dir(&self.current_dir) {
@@ -154,11 +160,42 @@ impl DirectoryScanner {
                 natord::compare(name_a, name_b)
             });
 
-            self.entries = found_paths
-                .into_iter()
-                .filter_map(|p| Self::probe_image(&p))
-                .collect();
+            found_paths
+        };
+
+        let mut current_paths_set = std::collections::HashSet::new();
+        let mut new_entries = Vec::new();
+
+        for path in candidate_paths {
+            if let Ok(meta) = std::fs::metadata(&path) {
+                if !meta.is_file() {
+                    continue;
+                }
+                current_paths_set.insert(path.clone());
+                let mtime = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                let len = meta.len();
+
+                if let Some((cached_mtime, cached_len, cached_entry)) = self.probe_cache.get(&path)
+                {
+                    if *cached_mtime == mtime && *cached_len == len {
+                        new_entries.push(cached_entry.clone());
+                        continue;
+                    }
+                }
+
+                if let Some(entry) = self.probe_image(&path, &meta) {
+                    self.probe_cache
+                        .insert(path.clone(), (mtime, len, entry.clone()));
+                    new_entries.push(entry);
+                }
+            }
         }
+
+        // Drop cache entries for paths no longer present
+        self.probe_cache
+            .retain(|p, _| current_paths_set.contains(p));
+
+        self.entries = new_entries;
 
         if self.current_index >= self.entries.len() && !self.entries.is_empty() {
             self.current_index = self.entries.len() - 1;
@@ -278,9 +315,11 @@ impl DirectoryScanner {
         Some(removed.path)
     }
 
-    fn probe_image(path: &Path) -> Option<ImageEntry> {
+    fn probe_image(&self, path: &Path, metadata: &std::fs::Metadata) -> Option<ImageEntry> {
+        #[cfg(test)]
+        self.probe_count.set(self.probe_count.get() + 1);
+
         let filename = path.file_name()?.to_string_lossy().to_string();
-        let metadata = std::fs::metadata(path).ok()?;
         let file_size = metadata.len();
         let ext = path
             .extension()
@@ -427,5 +466,17 @@ mod tests {
         assert!(!scanner.entries.is_empty());
         assert!(!scanner.current_dir.as_os_str().is_empty());
         assert_eq!(scanner.current().unwrap().filename, "sample_1.png");
+    }
+
+    #[test]
+    fn test_scanner_probe_cache_rescan_reuses() {
+        let path = Path::new("tests/samples");
+        let mut scanner = DirectoryScanner::new(path).unwrap();
+        let first_count = scanner.probe_count.get();
+        assert!(first_count > 0);
+
+        scanner.rescan().unwrap();
+        let second_count = scanner.probe_count.get();
+        assert_eq!(first_count, second_count);
     }
 }

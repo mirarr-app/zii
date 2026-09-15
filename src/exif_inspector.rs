@@ -200,16 +200,26 @@ pub fn extract_metadata(
 
     if let Some(f) = date_field {
         let raw = clean_str(&f.display_value().to_string());
-        // Format e.g. "2023:05:14 15:30:00" -> "2023-05-14 15:30:00"
-        let formatted = if raw.len() >= 10 && &raw[4..5] == ":" && &raw[7..8] == ":" {
-            format!("{}-{}-{}", &raw[0..4], &raw[5..7], &raw[8..])
-        } else {
-            raw
-        };
-        meta.date_time = Some(formatted);
+        meta.date_time = Some(format_exif_date(&raw));
     }
 
     meta
+}
+
+pub fn format_exif_date(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    if raw.len() >= 10
+        && raw.is_char_boundary(4)
+        && raw.is_char_boundary(5)
+        && raw.is_char_boundary(7)
+        && raw.is_char_boundary(8)
+        && bytes.get(4) == Some(&b':')
+        && bytes.get(7) == Some(&b':')
+    {
+        format!("{}-{}-{}", &raw[0..4], &raw[5..7], &raw[8..])
+    } else {
+        raw.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -222,6 +232,28 @@ mod tests {
         assert_eq!(format_file_size(2048), "2.0 KB");
         assert_eq!(format_file_size(1048576 * 3), "3.0 MB");
         assert_eq!(format_file_size(1073741824 * 2), "2.00 GB");
+    }
+
+    #[test]
+    fn test_format_exif_date_safe_with_non_ascii() {
+        // Standard ASCII date format
+        assert_eq!(
+            format_exif_date("2023:05:14 15:30:00"),
+            "2023-05-14 15:30:00"
+        );
+
+        // Non-ASCII string where byte 4 or 7 is not a char boundary
+        // 'П' (2 bytes), 'р' (2 bytes) -> byte 4 is start of 'и' (2 bytes)
+        // A direct slice &s[4..5] panics on "Привет:мир"
+        let non_ascii = "Привет:мир";
+        assert_eq!(format_exif_date(non_ascii), non_ascii);
+
+        // Japanese date with multi-byte characters
+        let cjk = "2023年05月14日";
+        assert_eq!(format_exif_date(cjk), cjk);
+
+        // Short string
+        assert_eq!(format_exif_date("2023:01"), "2023:01");
     }
 
     #[test]
