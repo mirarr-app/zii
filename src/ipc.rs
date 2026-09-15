@@ -96,7 +96,8 @@ pub enum ServerEvent {
 pub struct AppState {
     pub scanner: DirectoryScanner,
     pub trash: TrashManager,
-    pub editor: ImageEditor,
+    pub editor: Arc<std::sync::Mutex<ImageEditor>>,
+    pub editor_busy: Arc<std::sync::atomic::AtomicBool>,
     pub edit_active: bool,
     pub theme: ThemeManager,
 }
@@ -349,12 +350,17 @@ async fn handle_connection(
             }
 
             match serde_json::from_str::<ClientRequest>(line) {
+                Ok(ClientRequest::Quit) => {
+                    let _ = process_request(ClientRequest::Quit, &state, &b_tx).await;
+                    let _ = shutdown_tx.send(()).await;
+                    break;
+                }
                 Ok(req) => {
-                    let should_quit = process_request(req, &state, &b_tx).await;
-                    if should_quit {
-                        let _ = shutdown_tx.send(()).await;
-                        break;
-                    }
+                    let state = state.clone();
+                    let b_tx = b_tx.clone();
+                    tokio::spawn(async move {
+                        process_request(req, &state, &b_tx).await;
+                    });
                 }
                 Err(e) => {
                     eprintln!("Failed to parse request JSON: {:?} - raw: {}", e, line);
@@ -371,246 +377,509 @@ async fn handle_connection(
     Ok(())
 }
 
+struct BusyGuard(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn send_event_helper(b_tx: &Arc<tokio::sync::broadcast::Sender<String>>, evt: ServerEvent) {
+    if let Ok(msg) = serde_json::to_string(&evt) {
+        let _ = b_tx.send(msg);
+    }
+}
+
+fn send_toast(b_tx: &Arc<tokio::sync::broadcast::Sender<String>>, message: &str, level: &str) {
+    send_event_helper(
+        b_tx,
+        ServerEvent::Toast {
+            message: message.to_string(),
+            level: level.to_string(),
+        },
+    );
+}
+
+async fn run_edit_op<F>(
+    state: &Arc<Mutex<AppState>>,
+    b_tx: &Arc<tokio::sync::broadcast::Sender<String>>,
+    op_name: &'static str,
+    op: F,
+) where
+    F: FnOnce(&mut ImageEditor) -> anyhow::Result<PathBuf> + Send + 'static,
+{
+    let (editor, editor_busy) = {
+        let st = state.lock().await;
+        if !st.edit_active {
+            return;
+        }
+        (st.editor.clone(), st.editor_busy.clone())
+    };
+
+    if editor_busy
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_err()
+    {
+        send_toast(b_tx, "Editor busy", "warn");
+        return;
+    }
+
+    let busy_guard = BusyGuard(editor_busy);
+    let res = tokio::task::spawn_blocking(move || {
+        let _guard = busy_guard;
+        let mut ed = editor.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let preview = op(&mut ed)?;
+        let (w, h) = ed.dimensions();
+        let can_undo = ed.can_undo();
+        let can_redo = ed.can_redo();
+        Ok::<(PathBuf, u32, u32, bool, bool), anyhow::Error>((preview, w, h, can_undo, can_redo))
+    })
+    .await;
+
+    match res {
+        Ok(Ok((preview, w, h, can_undo, can_redo))) => {
+            let st = state.lock().await;
+            if st.edit_active {
+                send_event_helper(
+                    b_tx,
+                    ServerEvent::EditState {
+                        active: true,
+                        preview_path: Some(preview.to_string_lossy().to_string()),
+                        can_undo,
+                        can_redo,
+                        width: w,
+                        height: h,
+                    },
+                );
+            }
+        }
+        Ok(Err(e)) => {
+            send_toast(b_tx, &format!("{op_name} error: {e}"), "error");
+        }
+        Err(e) => {
+            send_toast(b_tx, &format!("{op_name} task failed: {e}"), "error");
+        }
+    }
+}
+
+async fn run_history_op<F>(
+    state: &Arc<Mutex<AppState>>,
+    b_tx: &Arc<tokio::sync::broadcast::Sender<String>>,
+    is_undo: bool,
+    op: F,
+) where
+    F: FnOnce(&mut ImageEditor) -> anyhow::Result<Option<PathBuf>> + Send + 'static,
+{
+    let op_name = if is_undo { "Undo" } else { "Redo" };
+    let (editor, editor_busy) = {
+        let st = state.lock().await;
+        if !st.edit_active {
+            return;
+        }
+        (st.editor.clone(), st.editor_busy.clone())
+    };
+
+    if editor_busy
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_err()
+    {
+        send_toast(b_tx, "Editor busy", "warn");
+        return;
+    }
+
+    let busy_guard = BusyGuard(editor_busy);
+    let res = tokio::task::spawn_blocking(move || {
+        let _guard = busy_guard;
+        let mut ed = editor.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let preview_opt = op(&mut ed)?;
+        let (w, h) = ed.dimensions();
+        let can_undo = ed.can_undo();
+        let can_redo = ed.can_redo();
+        Ok::<(Option<PathBuf>, u32, u32, bool, bool), anyhow::Error>((
+            preview_opt,
+            w,
+            h,
+            can_undo,
+            can_redo,
+        ))
+    })
+    .await;
+
+    match res {
+        Ok(Ok((Some(preview), w, h, can_undo, can_redo))) => {
+            let st = state.lock().await;
+            if st.edit_active {
+                send_event_helper(
+                    b_tx,
+                    ServerEvent::EditState {
+                        active: true,
+                        preview_path: Some(preview.to_string_lossy().to_string()),
+                        can_undo,
+                        can_redo,
+                        width: w,
+                        height: h,
+                    },
+                );
+            }
+        }
+        Ok(Ok((None, _, _, _, _))) => {
+            let msg = if is_undo {
+                "Already at oldest edit"
+            } else {
+                "Already at newest edit"
+            };
+            send_toast(b_tx, msg, "info");
+        }
+        Ok(Err(e)) => {
+            send_toast(b_tx, &format!("{op_name} error: {e}"), "error");
+        }
+        Err(e) => {
+            send_toast(b_tx, &format!("{op_name} task failed: {e}"), "error");
+        }
+    }
+}
+
 async fn process_request(
     req: ClientRequest,
     state: &Arc<Mutex<AppState>>,
     b_tx: &Arc<tokio::sync::broadcast::Sender<String>>,
 ) -> bool {
-    let mut st = state.lock().await;
-
-    let send_event = |evt: ServerEvent| {
-        if let Ok(msg) = serde_json::to_string(&evt) {
-            let _ = b_tx.send(msg);
-        }
-    };
-
     match req {
         ClientRequest::Ready => {
-            // Send initial theme
-            send_event(ServerEvent::Theme {
-                theme: st.theme.current_theme.clone(),
-            });
-            // Send directory state
-            send_event(ServerEvent::DirectoryState {
-                index: st.scanner.current_index,
-                total: st.scanner.entries.len(),
-                current: st.scanner.current().cloned(),
-            });
+            let (theme, index, total, current) = {
+                let st = state.lock().await;
+                (
+                    st.theme.current_theme.clone(),
+                    st.scanner.current_index,
+                    st.scanner.entries.len(),
+                    st.scanner.current().cloned(),
+                )
+            };
+            send_event_helper(b_tx, ServerEvent::Theme { theme });
+            send_event_helper(
+                b_tx,
+                ServerEvent::DirectoryState {
+                    index,
+                    total,
+                    current,
+                },
+            );
         }
         ClientRequest::Navigate { direction, target } => {
-            if st.edit_active {
-                // If in edit mode, cancel edits when navigating away
-                st.edit_active = false;
-                send_event(ServerEvent::EditState {
-                    active: false,
-                    preview_path: None,
-                    can_undo: false,
-                    can_redo: false,
-                    width: 0,
-                    height: 0,
-                });
-            }
+            let (index, total, current, was_edit_active) = {
+                let mut st = state.lock().await;
+                let was_edit = st.edit_active;
+                if was_edit {
+                    st.edit_active = false;
+                }
 
-            match direction.as_str() {
-                "next" => {
-                    st.scanner.next();
-                }
-                "prev" => {
-                    st.scanner.prev();
-                }
-                "first" => {
-                    st.scanner.first();
-                }
-                "last" => {
-                    st.scanner.last();
-                }
-                "goto" => {
-                    if let Some(idx) = target {
-                        st.scanner.go_to(idx);
+                match direction.as_str() {
+                    "next" => {
+                        st.scanner.next();
                     }
+                    "prev" => {
+                        st.scanner.prev();
+                    }
+                    "first" => {
+                        st.scanner.first();
+                    }
+                    "last" => {
+                        st.scanner.last();
+                    }
+                    "goto" => {
+                        if let Some(idx) = target {
+                            st.scanner.go_to(idx);
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
+
+                (
+                    st.scanner.current_index,
+                    st.scanner.entries.len(),
+                    st.scanner.current().cloned(),
+                    was_edit,
+                )
+            };
+
+            if was_edit_active {
+                send_event_helper(
+                    b_tx,
+                    ServerEvent::EditState {
+                        active: false,
+                        preview_path: None,
+                        can_undo: false,
+                        can_redo: false,
+                        width: 0,
+                        height: 0,
+                    },
+                );
             }
 
-            send_event(ServerEvent::DirectoryState {
-                index: st.scanner.current_index,
-                total: st.scanner.entries.len(),
-                current: st.scanner.current().cloned(),
-            });
+            send_event_helper(
+                b_tx,
+                ServerEvent::DirectoryState {
+                    index,
+                    total,
+                    current,
+                },
+            );
         }
         ClientRequest::DeleteCurrent { permanent } => {
-            if let Some(current) = st.scanner.current().cloned() {
-                let filename = current.filename.clone();
-                let res = if permanent {
-                    st.trash.delete_permanent(&current.path)
+            let (res, filename, index, total, current) = {
+                let mut st = state.lock().await;
+                if let Some(current) = st.scanner.current().cloned() {
+                    let fname = current.filename.clone();
+                    let res = if permanent {
+                        st.trash.delete_permanent(&current.path)
+                    } else {
+                        st.trash.move_to_trash(&current.path)
+                    };
+                    if res.is_ok() {
+                        st.scanner.remove_current();
+                    }
+                    (
+                        Some(res),
+                        fname,
+                        st.scanner.current_index,
+                        st.scanner.entries.len(),
+                        st.scanner.current().cloned(),
+                    )
                 } else {
-                    st.trash.move_to_trash(&current.path)
-                };
+                    (None, String::new(), 0, 0, None)
+                }
+            };
 
+            if let Some(res) = res {
                 match res {
                     Ok(_) => {
-                        st.scanner.remove_current();
                         let msg = if permanent {
                             format!("Permanently deleted {}", filename)
                         } else {
                             format!("Moved {} to trash (press 'u' to undo)", filename)
                         };
-                        send_event(ServerEvent::Toast {
-                            message: msg,
-                            level: "warn".to_string(),
-                        });
-                        send_event(ServerEvent::DirectoryState {
-                            index: st.scanner.current_index,
-                            total: st.scanner.entries.len(),
-                            current: st.scanner.current().cloned(),
-                        });
+                        send_toast(b_tx, &msg, "warn");
+                        send_event_helper(
+                            b_tx,
+                            ServerEvent::DirectoryState {
+                                index,
+                                total,
+                                current,
+                            },
+                        );
                     }
                     Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Failed to delete: {}", e),
-                            level: "error".to_string(),
-                        });
+                        send_toast(b_tx, &format!("Failed to delete: {}", e), "error");
                     }
                 }
             }
         }
-        ClientRequest::RestoreTrash => match st.trash.restore_last() {
-            Ok(Some(restored_path)) => {
-                let filename = restored_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                let _ = st.scanner.rescan();
-                if let Some(pos) = st
-                    .scanner
-                    .entries
-                    .iter()
-                    .position(|e| e.path == restored_path)
-                {
-                    st.scanner.current_index = pos;
+        ClientRequest::RestoreTrash => {
+            let (res, index, total, current) = {
+                let mut st = state.lock().await;
+                let res = st.trash.restore_last();
+                if let Ok(Some(ref restored_path)) = res {
+                    let _ = st.scanner.rescan();
+                    if let Some(pos) = st
+                        .scanner
+                        .entries
+                        .iter()
+                        .position(|e| &e.path == restored_path)
+                    {
+                        st.scanner.current_index = pos;
+                    }
                 }
-                send_event(ServerEvent::Toast {
-                    message: format!("Restored {}", filename),
-                    level: "success".to_string(),
-                });
-                send_event(ServerEvent::DirectoryState {
-                    index: st.scanner.current_index,
-                    total: st.scanner.entries.len(),
-                    current: st.scanner.current().cloned(),
-                });
+                (
+                    res,
+                    st.scanner.current_index,
+                    st.scanner.entries.len(),
+                    st.scanner.current().cloned(),
+                )
+            };
+
+            match res {
+                Ok(Some(restored_path)) => {
+                    let filename = restored_path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    send_toast(b_tx, &format!("Restored {}", filename), "success");
+                    send_event_helper(
+                        b_tx,
+                        ServerEvent::DirectoryState {
+                            index,
+                            total,
+                            current,
+                        },
+                    );
+                }
+                Ok(None) => {
+                    send_toast(b_tx, "Nothing to undo", "info");
+                }
+                Err(e) => {
+                    send_toast(b_tx, &format!("Failed to restore: {}", e), "error");
+                }
             }
-            Ok(None) => {
-                send_event(ServerEvent::Toast {
-                    message: "Nothing to undo".to_string(),
-                    level: "info".to_string(),
-                });
-            }
-            Err(e) => {
-                send_event(ServerEvent::Toast {
-                    message: format!("Failed to restore: {}", e),
-                    level: "error".to_string(),
-                });
-            }
-        },
+        }
         ClientRequest::ClipboardCopy { path_only } => {
-            if let Some(current) = st.scanner.current().cloned() {
-                match copy_to_clipboard(&current.path, path_only).await {
+            let path_opt = {
+                let st = state.lock().await;
+                st.scanner.current().map(|e| e.path.clone())
+            };
+
+            if let Some(path) = path_opt {
+                match copy_to_clipboard(&path, path_only).await {
                     Ok(msg) => {
-                        send_event(ServerEvent::Toast {
-                            message: msg,
-                            level: "success".to_string(),
-                        });
+                        send_toast(b_tx, &msg, "success");
                     }
                     Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: e,
-                            level: "error".to_string(),
-                        });
+                        send_toast(b_tx, &e, "error");
                     }
                 }
             } else {
-                send_event(ServerEvent::Toast {
-                    message: "No image selected".to_string(),
-                    level: "warn".to_string(),
-                });
+                send_toast(b_tx, "No image selected", "warn");
             }
         }
         ClientRequest::SetWallpaper => {
-            if let Some(current) = st.scanner.current().cloned() {
-                let filename = current.filename.clone();
-                match set_wallpaper(&current.path).await {
+            let (path_opt, filename_opt) = {
+                let st = state.lock().await;
+                match st.scanner.current() {
+                    Some(cur) => (Some(cur.path.clone()), Some(cur.filename.clone())),
+                    None => (None, None),
+                }
+            };
+
+            if let (Some(path), Some(filename)) = (path_opt, filename_opt) {
+                match set_wallpaper(&path).await {
                     Ok(_) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Set as Omarchy wallpaper: {}", filename),
-                            level: "success".to_string(),
-                        });
+                        send_toast(
+                            b_tx,
+                            &format!("Set as Omarchy wallpaper: {}", filename),
+                            "success",
+                        );
                     }
                     Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: e,
-                            level: "error".to_string(),
-                        });
+                        send_toast(b_tx, &e, "error");
                     }
                 }
             } else {
-                send_event(ServerEvent::Toast {
-                    message: "No image selected".to_string(),
-                    level: "warn".to_string(),
-                });
+                send_toast(b_tx, "No image selected", "warn");
             }
         }
         ClientRequest::GetExif => {
-            if let Some(current) = st.scanner.current().cloned() {
-                let data = extract_metadata(
-                    &current.path,
-                    current.width,
-                    current.height,
-                    current.file_size,
-                    &current.format,
-                );
-                send_event(ServerEvent::ExifData { data });
+            let current = {
+                let st = state.lock().await;
+                st.scanner.current().cloned()
+            };
+
+            if let Some(current) = current {
+                let res = tokio::task::spawn_blocking(move || {
+                    extract_metadata(
+                        &current.path,
+                        current.width,
+                        current.height,
+                        current.file_size,
+                        &current.format,
+                    )
+                })
+                .await;
+
+                if let Ok(data) = res {
+                    send_event_helper(b_tx, ServerEvent::ExifData { data });
+                }
             }
         }
         ClientRequest::EditStart => {
-            if let Some(current) = st.scanner.current().cloned() {
-                match st.editor.open(&current.path) {
-                    Ok(preview) => {
-                        st.edit_active = true;
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
+            let (editor, editor_busy, path) = {
+                let st = state.lock().await;
+                let path = st.scanner.current().map(|e| e.path.clone());
+                (st.editor.clone(), st.editor_busy.clone(), path)
+            };
+
+            let Some(path) = path else {
+                return false;
+            };
+
+            if editor_busy
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_err()
+            {
+                send_toast(b_tx, "Editor busy", "warn");
+                return false;
+            }
+
+            let busy_guard = BusyGuard(editor_busy);
+            let res = tokio::task::spawn_blocking(move || {
+                let _guard = busy_guard;
+                let mut ed = editor.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+                let preview = ed.open(&path)?;
+                let (w, h) = ed.dimensions();
+                Ok::<(PathBuf, u32, u32), anyhow::Error>((preview, w, h))
+            })
+            .await;
+
+            match res {
+                Ok(Ok((preview, w, h))) => {
+                    let mut st = state.lock().await;
+                    st.edit_active = true;
+                    send_event_helper(
+                        b_tx,
+                        ServerEvent::EditState {
                             active: true,
                             preview_path: Some(preview.to_string_lossy().to_string()),
                             can_undo: false,
                             can_redo: false,
                             width: w,
                             height: h,
-                        });
-                    }
-                    Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Cannot edit image: {}", e),
-                            level: "error".to_string(),
-                        });
-                    }
+                        },
+                    );
+                }
+                Ok(Err(e)) => {
+                    send_toast(b_tx, &format!("Cannot edit image: {}", e), "error");
+                }
+                Err(e) => {
+                    send_toast(b_tx, &format!("Edit task failed: {}", e), "error");
                 }
             }
         }
         ClientRequest::EditCancel => {
-            st.edit_active = false;
-            st.editor.adjustment_base = None;
-            send_event(ServerEvent::EditState {
-                active: false,
-                preview_path: None,
-                can_undo: false,
-                can_redo: false,
-                width: 0,
-                height: 0,
-            });
-            send_event(ServerEvent::Toast {
-                message: "Discarded edits".to_string(),
-                level: "info".to_string(),
-            });
+            let editor = {
+                let mut st = state.lock().await;
+                st.edit_active = false;
+                st.editor.clone()
+            };
+            if let Ok(mut ed) = editor.try_lock() {
+                ed.adjustment_base = None;
+            }
+            send_event_helper(
+                b_tx,
+                ServerEvent::EditState {
+                    active: false,
+                    preview_path: None,
+                    can_undo: false,
+                    can_redo: false,
+                    width: 0,
+                    height: 0,
+                },
+            );
+            send_toast(b_tx, "Discarded edits", "info");
         }
         ClientRequest::EditCrop {
             x,
@@ -618,187 +887,81 @@ async fn process_request(
             width,
             height,
         } => {
-            if st.edit_active {
-                match st.editor.crop(x, y, width, height) {
-                    Ok(preview) => {
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
-                            active: true,
-                            preview_path: Some(preview.to_string_lossy().to_string()),
-                            can_undo: st.editor.can_undo(),
-                            can_redo: st.editor.can_redo(),
-                            width: w,
-                            height: h,
-                        });
-                    }
-                    Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Crop error: {}", e),
-                            level: "error".to_string(),
-                        });
-                    }
-                }
-            }
+            run_edit_op(state, b_tx, "Crop", move |ed| ed.crop(x, y, width, height)).await;
         }
         ClientRequest::EditRotate { degrees } => {
-            if st.edit_active {
-                match st.editor.rotate(degrees) {
-                    Ok(preview) => {
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
-                            active: true,
-                            preview_path: Some(preview.to_string_lossy().to_string()),
-                            can_undo: st.editor.can_undo(),
-                            can_redo: st.editor.can_redo(),
-                            width: w,
-                            height: h,
-                        });
-                    }
-                    Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Rotate error: {}", e),
-                            level: "error".to_string(),
-                        });
-                    }
-                }
-            }
+            run_edit_op(state, b_tx, "Rotate", move |ed| ed.rotate(degrees)).await;
         }
         ClientRequest::EditFlip {
             horizontal,
             vertical,
         } => {
-            if st.edit_active {
-                match st.editor.flip(horizontal, vertical) {
-                    Ok(preview) => {
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
-                            active: true,
-                            preview_path: Some(preview.to_string_lossy().to_string()),
-                            can_undo: st.editor.can_undo(),
-                            can_redo: st.editor.can_redo(),
-                            width: w,
-                            height: h,
-                        });
-                    }
-                    Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Flip error: {}", e),
-                            level: "error".to_string(),
-                        });
-                    }
-                }
-            }
+            run_edit_op(state, b_tx, "Flip", move |ed| ed.flip(horizontal, vertical)).await;
         }
         ClientRequest::EditAdjust {
             brightness,
             contrast,
             saturation,
         } => {
-            if st.edit_active {
-                match st.editor.adjust(brightness, contrast, saturation) {
-                    Ok(preview) => {
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
-                            active: true,
-                            preview_path: Some(preview.to_string_lossy().to_string()),
-                            can_undo: st.editor.can_undo(),
-                            can_redo: st.editor.can_redo(),
-                            width: w,
-                            height: h,
-                        });
-                    }
-                    Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Adjustment error: {}", e),
-                            level: "error".to_string(),
-                        });
-                    }
-                }
-            }
+            run_edit_op(state, b_tx, "Adjustment", move |ed| {
+                ed.adjust(brightness, contrast, saturation)
+            })
+            .await;
         }
         ClientRequest::EditResize { width, height } => {
-            if st.edit_active {
-                match st.editor.resize(width, height) {
-                    Ok(preview) => {
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
-                            active: true,
-                            preview_path: Some(preview.to_string_lossy().to_string()),
-                            can_undo: st.editor.can_undo(),
-                            can_redo: st.editor.can_redo(),
-                            width: w,
-                            height: h,
-                        });
-                    }
-                    Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Resize error: {}", e),
-                            level: "error".to_string(),
-                        });
-                    }
-                }
-            }
+            run_edit_op(state, b_tx, "Resize", move |ed| ed.resize(width, height)).await;
         }
         ClientRequest::EditUndo => {
-            if st.edit_active {
-                match st.editor.undo() {
-                    Ok(Some(preview)) => {
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
-                            active: true,
-                            preview_path: Some(preview.to_string_lossy().to_string()),
-                            can_undo: st.editor.can_undo(),
-                            can_redo: st.editor.can_redo(),
-                            width: w,
-                            height: h,
-                        });
-                    }
-                    _ => {
-                        send_event(ServerEvent::Toast {
-                            message: "Already at oldest edit".to_string(),
-                            level: "info".to_string(),
-                        });
-                    }
-                }
-            }
+            run_history_op(state, b_tx, true, |ed| ed.undo()).await;
         }
         ClientRequest::EditRedo => {
-            if st.edit_active {
-                match st.editor.redo() {
-                    Ok(Some(preview)) => {
-                        let (w, h) = st.editor.dimensions();
-                        send_event(ServerEvent::EditState {
-                            active: true,
-                            preview_path: Some(preview.to_string_lossy().to_string()),
-                            can_undo: st.editor.can_undo(),
-                            can_redo: st.editor.can_redo(),
-                            width: w,
-                            height: h,
-                        });
-                    }
-                    _ => {
-                        send_event(ServerEvent::Toast {
-                            message: "Already at newest edit".to_string(),
-                            level: "info".to_string(),
-                        });
-                    }
-                }
-            }
+            run_history_op(state, b_tx, false, |ed| ed.redo()).await;
         }
         ClientRequest::EditSave {
             overwrite,
             filename,
         } => {
-            if st.edit_active {
-                st.editor.commit_adjustments();
-                let custom_path = filename.map(PathBuf::from);
-                match st.editor.save(overwrite, custom_path.as_deref()) {
-                    Ok(saved_path) => {
-                        let fname = saved_path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
+            let (editor, editor_busy) = {
+                let st = state.lock().await;
+                if !st.edit_active {
+                    return false;
+                }
+                (st.editor.clone(), st.editor_busy.clone())
+            };
+
+            if editor_busy
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_err()
+            {
+                send_toast(b_tx, "Editor busy", "warn");
+                return false;
+            }
+
+            let busy_guard = BusyGuard(editor_busy);
+            let custom_path = filename.map(PathBuf::from);
+            let res = tokio::task::spawn_blocking(move || {
+                let _guard = busy_guard;
+                let mut ed = editor.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+                ed.commit_adjustments();
+                let saved = ed.save(overwrite, custom_path.as_deref())?;
+                Ok::<PathBuf, anyhow::Error>(saved)
+            })
+            .await;
+
+            match res {
+                Ok(Ok(saved_path)) => {
+                    let fname = saved_path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    let (index, total, current) = {
+                        let mut st = state.lock().await;
                         st.edit_active = false;
                         let _ = st.scanner.rescan();
                         if let Some(pos) =
@@ -807,35 +970,44 @@ async fn process_request(
                             st.scanner.current_index = pos;
                         }
 
-                        send_event(ServerEvent::EditState {
+                        (
+                            st.scanner.current_index,
+                            st.scanner.entries.len(),
+                            st.scanner.current().cloned(),
+                        )
+                    };
+
+                    send_event_helper(
+                        b_tx,
+                        ServerEvent::EditState {
                             active: false,
                             preview_path: None,
                             can_undo: false,
                             can_redo: false,
                             width: 0,
                             height: 0,
-                        });
-                        send_event(ServerEvent::Toast {
-                            message: format!("Saved {}", fname),
-                            level: "success".to_string(),
-                        });
-                        send_event(ServerEvent::DirectoryState {
-                            index: st.scanner.current_index,
-                            total: st.scanner.entries.len(),
-                            current: st.scanner.current().cloned(),
-                        });
-                    }
-                    Err(e) => {
-                        send_event(ServerEvent::Toast {
-                            message: format!("Failed to save: {}", e),
-                            level: "error".to_string(),
-                        });
-                    }
+                        },
+                    );
+                    send_toast(b_tx, &format!("Saved {}", fname), "success");
+                    send_event_helper(
+                        b_tx,
+                        ServerEvent::DirectoryState {
+                            index,
+                            total,
+                            current,
+                        },
+                    );
+                }
+                Ok(Err(e)) => {
+                    send_toast(b_tx, &format!("Failed to save: {}", e), "error");
+                }
+                Err(e) => {
+                    send_toast(b_tx, &format!("Save task failed: {}", e), "error");
                 }
             }
         }
         ClientRequest::Quit => {
-            send_event(ServerEvent::Close);
+            send_event_helper(b_tx, ServerEvent::Close);
             return true;
         }
     }
@@ -949,5 +1121,182 @@ mod tests {
         let sample = Path::new("tests/samples/sample_1.png");
         let res = copy_to_clipboard(sample, true).await;
         assert!(res.is_err() || res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ipc_server_ready_and_edit_start() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let socket_path = temp_dir.path().join("test_zii.sock");
+
+        let sample_path = PathBuf::from("tests/samples/sample_1.png")
+            .canonicalize()
+            .unwrap();
+        let scanner = DirectoryScanner::from_paths(&[sample_path]).unwrap();
+        let trash = TrashManager::new();
+        let editor = Arc::new(std::sync::Mutex::new(ImageEditor::new()));
+        let editor_busy = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let theme = ThemeManager::new();
+
+        let state = Arc::new(Mutex::new(AppState {
+            scanner,
+            trash,
+            editor,
+            editor_busy,
+            edit_active: false,
+            theme,
+        }));
+
+        let (_theme_tx, theme_rx) = mpsc::channel(16);
+        let (_dir_tx, dir_rx) = mpsc::channel(16);
+        let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
+
+        let s_path = socket_path.clone();
+        let s_state = state.clone();
+        let server_handle = tokio::spawn(async move {
+            let _ = run_ipc_server(s_path, s_state, theme_rx, dir_rx, shutdown_tx).await;
+        });
+
+        // Wait for socket to be available
+        let mut stream = None;
+        for _ in 0..50 {
+            if socket_path.exists() {
+                if let Ok(s) = UnixStream::connect(&socket_path).await {
+                    stream = Some(s);
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let stream = stream.expect("Failed to connect to test IPC socket");
+        let (reader, mut writer) = stream.into_split();
+        let mut lines = BufReader::new(reader).lines();
+
+        // Send ready
+        writer.write_all(b"{\"type\":\"ready\"}\n").await.unwrap();
+        writer.flush().await.unwrap();
+
+        // Expect directory_state event
+        let mut got_dir_state = false;
+        while let Ok(Ok(Some(line))) =
+            tokio::time::timeout(std::time::Duration::from_secs(3), lines.next_line()).await
+        {
+            let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+            if v["type"] == "directory_state" {
+                assert!(v["total"].as_u64().unwrap() >= 1);
+                assert_eq!(v["current"]["filename"], "sample_1.png");
+                got_dir_state = true;
+                break;
+            }
+        }
+        assert!(got_dir_state, "Expected directory_state event");
+
+        // Send edit_start
+        writer
+            .write_all(b"{\"type\":\"edit_start\"}\n")
+            .await
+            .unwrap();
+        writer.flush().await.unwrap();
+
+        // Expect edit_state event with active: true
+        let mut got_edit_state = false;
+        while let Ok(Ok(Some(line))) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), lines.next_line()).await
+        {
+            let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+            if v["type"] == "edit_state" {
+                assert_eq!(v["active"], true);
+                assert!(v["preview_path"].is_string());
+                assert!(v["width"].as_u64().unwrap() > 0);
+                assert!(v["height"].as_u64().unwrap() > 0);
+                got_edit_state = true;
+                break;
+            }
+        }
+        assert!(
+            got_edit_state,
+            "Expected edit_state event with active: true"
+        );
+
+        // Send quit
+        writer.write_all(b"{\"type\":\"quit\"}\n").await.unwrap();
+        writer.flush().await.unwrap();
+
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), shutdown_rx.recv()).await;
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_ipc_server_editor_busy() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let socket_path = temp_dir.path().join("test_busy.sock");
+
+        let sample_path = PathBuf::from("tests/samples/sample_1.png")
+            .canonicalize()
+            .unwrap();
+        let scanner = DirectoryScanner::from_paths(&[sample_path]).unwrap();
+        let trash = TrashManager::new();
+        let editor = Arc::new(std::sync::Mutex::new(ImageEditor::new()));
+        let editor_busy = Arc::new(std::sync::atomic::AtomicBool::new(true)); // Start busy!
+        let theme = ThemeManager::new();
+
+        let state = Arc::new(Mutex::new(AppState {
+            scanner,
+            trash,
+            editor,
+            editor_busy,
+            edit_active: false,
+            theme,
+        }));
+
+        let (_theme_tx, theme_rx) = mpsc::channel(16);
+        let (_dir_tx, dir_rx) = mpsc::channel(16);
+        let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
+
+        let s_path = socket_path.clone();
+        let s_state = state.clone();
+        let server_handle = tokio::spawn(async move {
+            let _ = run_ipc_server(s_path, s_state, theme_rx, dir_rx, shutdown_tx).await;
+        });
+
+        // Connect
+        let mut stream = None;
+        for _ in 0..50 {
+            if socket_path.exists() {
+                if let Ok(s) = UnixStream::connect(&socket_path).await {
+                    stream = Some(s);
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let stream = stream.expect("Failed to connect to test IPC socket");
+        let (reader, mut writer) = stream.into_split();
+        let mut lines = BufReader::new(reader).lines();
+
+        // Send edit_start while editor_busy is true
+        writer
+            .write_all(b"{\"type\":\"edit_start\"}\n")
+            .await
+            .unwrap();
+        writer.flush().await.unwrap();
+
+        // Expect toast "Editor busy"
+        let mut got_busy_toast = false;
+        while let Ok(Ok(Some(line))) =
+            tokio::time::timeout(std::time::Duration::from_secs(3), lines.next_line()).await
+        {
+            let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+            if v["type"] == "toast" && v["message"] == "Editor busy" {
+                assert_eq!(v["level"], "warn");
+                got_busy_toast = true;
+                break;
+            }
+        }
+        assert!(got_busy_toast, "Expected 'Editor busy' toast event");
+
+        writer.write_all(b"{\"type\":\"quit\"}\n").await.unwrap();
+        writer.flush().await.unwrap();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), shutdown_rx.recv()).await;
+        server_handle.abort();
     }
 }

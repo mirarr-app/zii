@@ -203,7 +203,9 @@ KEYBINDINGS (Edit Mode):
 async fn cleanup_app(socket_path: &Path, app_state: &Arc<Mutex<AppState>>) {
     let _ = std::fs::remove_file(socket_path);
     let st = app_state.lock().await;
-    st.editor.cleanup();
+    if let Ok(ed) = st.editor.lock() {
+        ed.cleanup();
+    }
     st.trash.cleanup();
 }
 
@@ -234,7 +236,8 @@ async fn main() -> anyhow::Result<()> {
     let app_state = Arc::new(Mutex::new(AppState {
         scanner,
         trash,
-        editor,
+        editor: Arc::new(std::sync::Mutex::new(editor)),
+        editor_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         edit_active: false,
         theme,
     }));
