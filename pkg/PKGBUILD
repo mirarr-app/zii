@@ -1,6 +1,6 @@
 # Maintainer: mirarrapp <iknowarch@proton.me>
 pkgname=zii-bin
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Blazing-fast photo viewer and editor for Omarchy Linux"
 arch=('x86_64')
