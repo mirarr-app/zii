@@ -39,6 +39,9 @@ Then run the one-liner source installer (re-running it pulls the latest commit, 
 curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | bash -s -- --source
 ```
 
+> [!TIP]
+> Append `--make-default` to any install command to automatically set Zii as the default viewer for all supported image formats (e.g., `./install.sh --make-default` or `curl -fsSL ... | bash -s -- --make-default`).
+
 ---
 
 ## Features

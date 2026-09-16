@@ -65,6 +65,7 @@ jobs:
           cp zii.desktop "${ARCHIVE_NAME}/"
           cp install.sh "${ARCHIVE_NAME}/"
           cp README.md "${ARCHIVE_NAME}/"
+          cp LICENSE "${ARCHIVE_NAME}/"
           
           tar -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
           sha256sum "${ARCHIVE_NAME}.tar.gz" > "${ARCHIVE_NAME}.tar.gz.sha256"

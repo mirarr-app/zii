@@ -11,6 +11,7 @@ REPO="mirarr-app/zii"
 MODE="local"       # local, release, prerelease, source
 USE_USER=true
 PREFIX="$HOME/.local"
+MAKE_DEFAULT=false
 
 CLEANUP_DIRS=()
 cleanup_temp_dirs() {
@@ -50,6 +51,9 @@ for arg in "$@"; do
         --prefix=*)
             PREFIX="${arg#*=}"
             ;;
+        --make-default)
+            MAKE_DEFAULT=true
+            ;;
         -h|--help)
             echo "Zii (字) Installer & Updater"
             echo ""
@@ -63,6 +67,7 @@ for arg in "$@"; do
             echo "  --user          Install to ~/.local without root privileges [default]"
             echo "  --system        Install system-wide to /usr/local (requires sudo)"
             echo "  --prefix=DIR    Install to custom destination prefix"
+            echo "  --make-default  Set Zii as the default application for all supported image formats"
             echo "  -h, --help      Show this help message"
             exit 0
             ;;
@@ -106,6 +111,68 @@ check_build_deps() {
         echo "    Install them on Omarchy / Arch Linux via:"
         echo "        sudo pacman -S --needed ${missing[*]}"
         exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Default Application Association
+# ------------------------------------------------------------------------------
+set_default_image_viewer() {
+    local apps_dir="$1"
+    local src_dir="$2"
+
+    echo "==> Configuring Zii as default viewer for all supported image formats..."
+
+    local desktop_file=""
+    if [ -f "$apps_dir/zii.desktop" ]; then
+        desktop_file="$apps_dir/zii.desktop"
+    elif [ -f "$src_dir/zii.desktop" ]; then
+        desktop_file="$src_dir/zii.desktop"
+    fi
+
+    local mimes=()
+    if [ -n "$desktop_file" ] && grep -q "^MimeType=" "$desktop_file"; then
+        local raw_line
+        raw_line="$(grep "^MimeType=" "$desktop_file" | head -n 1 | cut -d= -f2-)"
+        local IFS=';'
+        read -r -a mimes <<< "$raw_line"
+    fi
+
+    if [ ${#mimes[@]} -eq 0 ]; then
+        mimes=(
+            "image/jpeg" "image/jpg" "image/pjpeg"
+            "image/png" "image/x-png" "image/vnd.mozilla.apng"
+            "image/webp" "image/gif"
+            "image/bmp" "image/x-bmp" "image/x-ms-bmp"
+            "image/tiff"
+            "image/svg+xml" "image/svg+xml-compressed"
+            "image/x-icon" "image/vnd.microsoft.icon"
+        )
+    fi
+
+    local count=0
+    for mime in "${mimes[@]}"; do
+        [ -z "$mime" ] && continue
+        if command -v xdg-mime >/dev/null 2>&1; then
+            xdg-mime default zii.desktop "$mime" 2>/dev/null || true
+        fi
+        if command -v gio >/dev/null 2>&1; then
+            gio mime "$mime" zii.desktop >/dev/null 2>&1 || true
+        fi
+        count=$((count + 1))
+    done
+
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        for mime in "${mimes[@]}"; do
+            [ -z "$mime" ] && continue
+            su - "$SUDO_USER" -c "command -v xdg-mime >/dev/null 2>&1 && xdg-mime default zii.desktop '$mime' 2>/dev/null; command -v gio >/dev/null 2>&1 && gio mime '$mime' zii.desktop 2>/dev/null" 2>/dev/null || true
+        done
+    fi
+
+    if command -v xdg-mime >/dev/null 2>&1 || command -v gio >/dev/null 2>&1; then
+        echo "  -> Associated $count image MIME types with zii.desktop"
+    else
+        echo "==> Warning: neither 'xdg-mime' nor 'gio' found to set default applications."
     fi
 }
 
@@ -187,6 +254,11 @@ install_files() {
 
     if command -v gtk-update-icon-cache >/dev/null 2>&1; then
         gtk-update-icon-cache -f -t "$icons_dir" 2>/dev/null || true
+    fi
+
+    # 5. Default application configuration
+    if [ "$MAKE_DEFAULT" = true ]; then
+        set_default_image_viewer "$apps_dir" "$src_dir"
     fi
 
     check_runtime_deps

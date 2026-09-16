@@ -7,5 +7,5 @@ Terminal=false
 Type=Application
 Icon=zii
 Categories=Graphics;2DGraphics;RasterGraphics;Photography;Viewer;
-MimeType=image/jpeg;image/png;image/webp;image/gif;image/bmp;image/tiff;image/svg+xml;image/x-icon;
+MimeType=image/jpeg;image/jpg;image/pjpeg;image/png;image/x-png;image/vnd.mozilla.apng;image/webp;image/gif;image/bmp;image/x-bmp;image/x-ms-bmp;image/tiff;image/svg+xml;image/svg+xml-compressed;image/x-icon;image/vnd.microsoft.icon;
 Keywords=Picture;Image;Photo;Viewer;Editor;Vim;Omarchy;

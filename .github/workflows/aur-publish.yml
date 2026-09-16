@@ -1,0 +1,63 @@
+name: Publish to AUR
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.2.0, without v prefix; leave empty to auto-detect from Cargo.toml)'
+        required: false
+        default: ''
+  release:
+    types: [published]
+
+jobs:
+  aur-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            VERSION="${TAG#v}"
+          else
+            VERSION=$(grep -m1 '^version' Cargo.toml | awk -F '"' '{print $2}')
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Target version: $VERSION"
+
+      - name: Update PKGBUILD version and checksum
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          sed -i "s/pkgver=.*/pkgver=${VERSION}/" pkg/PKGBUILD
+
+          TARBALL_URL="https://github.com/mirarr-app/zii/releases/download/v${VERSION}/zii-v${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          SHA=$(curl -sL "${TARBALL_URL}.sha256" | awk '{print $1}')
+          if [ -z "$SHA" ] || [ ${#SHA} -ne 64 ]; then
+            echo "Checksum asset not found or invalid, downloading tarball to compute sha256..."
+            SHA=$(curl -sL "$TARBALL_URL" | sha256sum | awk '{print $1}')
+          fi
+
+          if [ -n "$SHA" ] && [ ${#SHA} -eq 64 ]; then
+            echo "Updating sha256sums with $SHA"
+            sed -i "s/sha256sums=.*/sha256sums=('${SHA}')/" pkg/PKGBUILD
+          else
+            echo "Warning: Could not determine sha256 checksum for v${VERSION}; keeping existing checksum"
+          fi
+
+      - name: Publish AUR package
+        uses: KSXGitHub/github-actions-deploy-aur@v2.7.0
+        with:
+          pkgname: zii-bin
+          pkgbuild: ./pkg/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to version ${{ steps.get_version.outputs.VERSION }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
