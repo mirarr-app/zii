@@ -4,6 +4,7 @@
   <a href="LICENSE"><img alt="License: MIT" height="20" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <a href="https://github.com/tcballard/omarchy-badges"><img alt="Built for Omarchy: Plugin" height="20" src="https://raw.githubusercontent.com/tcballard/omarchy-badges/75975e5b5bf75e7ede3764bcd2950046f7abfe2c/badges/v1/omarchy-app.svg"></a>
   <a href="#compatibility"><img alt="Supported Omarchy versions: 4.0.0+" height="20" src="https://raw.githubusercontent.com/tcballard/omarchy-badges/dd84bb21f19caf617caa5b3c1af7ff3c6cb847c3/badges/v1/compatibility/omarchy-4.0.0-plus.svg"></a>
+  <a href="https://aur.archlinux.org/packages/zii-bin"><img alt="AUR Version" height="20" src="https://img.shields.io/aur/version/zii-bin?style=flat-square&color=blue"></a>
 </p>
 
 **Zii** is a high-performance, keyboard-driven photo viewer and non-destructive image editor designed specifically for **Omarchy Linux**. Built with a multithreaded **Rust** core and a fluid **Quickshell** (Qt QML) frontend, it features Vim-style modal navigation and editing, instant trash undo, and real-time Omarchy theme hot-reloading.
@@ -14,21 +15,27 @@
 
 ---
 
-## Installation & Updating (Omarchy)
+## Installation & Updating (Omarchy / Arch Linux)
 
-### 1. Latest Stable Release (Prebuilt Binary)
+### 1. Arch User Repository (AUR)
+Install the binary package with `yay` (or your preferred AUR helper):
+```bash
+yay -S zii-bin
+```
+
+### 2. Standalone Installer (Prebuilt Binary)
 Install the latest stable release to `~/.local/bin` and `~/.local/share` (running this command again automatically updates to the newest release):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | bash
 ```
 
-### 2. Latest Pre-release (Bleeding Edge Binary)
+### 3. Latest Pre-release (Bleeding Edge Binary)
 Install or update to the latest pre-release build:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | bash -s -- --prerelease
 ```
 
-### 3. Build & Install from Source
+### 4. Build & Install from Source
 #### Prerequisites for building from source on Omarchy:
 Ensure the Rust toolchain, Git, and Quickshell are installed:
 ```bash
@@ -40,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/mirarr-app/zii/main/install.sh | ba
 ```
 
 > [!TIP]
-> Append `--make-default` to any install command to automatically set Zii as the default viewer for all supported image formats (e.g., `./install.sh --make-default` or `curl -fsSL ... | bash -s -- --make-default`).
+> Append `--make-default` to any `install.sh` command to automatically set Zii as the default viewer for all supported image formats (e.g., `./install.sh --make-default` or `curl -fsSL ... | bash -s -- --make-default`).
 
 ---
 
