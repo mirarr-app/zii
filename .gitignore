@@ -1,1 +1,13 @@
 /target
+
+# Secrets & keys
+*.key
+*.pem
+id_ed25519*
+id_rsa*
+
+# Arch packaging artifacts
+*.pkg.tar.*
+pkg/src/
+pkg/pkg/
+
